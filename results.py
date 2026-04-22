@@ -28,10 +28,26 @@ QUANT_ORDER = {
 PROVIDER_ORDER = {"unsloth": 0, "bartowski": 1, "AesSedai": 2, "ggml-org": 3}
 
 CSV_FIELDNAMES = [
-    "model", "quant", "provider", "size_gib", "params", "model_type",
-    "mmproj", "ctx", "ngl", "moe_cpu", "pp2048_tps", "tg512_tps",
-    "vctx", "vngl", "vpp2048_tps", "vtg512_tps", "vision", "reason",
-    "switch", "effort"
+    "model",
+    "quant",
+    "provider",
+    "size_gib",
+    "params",
+    "model_type",
+    "mmproj",
+    "ctx",
+    "ngl",
+    "moe_cpu",
+    "pp2048_tps",
+    "tg512_tps",
+    "vctx",
+    "vngl",
+    "vpp2048_tps",
+    "vtg512_tps",
+    "vision",
+    "reason",
+    "switch",
+    "effort",
 ]
 
 TEXT_COLS = [7, 8, 9, 10, 11]
@@ -45,7 +61,10 @@ def load_models():
 
 
 def load_tags():
-    return [f"{m['repo']}:{m['quant']}" for m in tomllib.load(open(MODELS_TOML, "rb")).get("models", [])]
+    return [
+        f"{m['repo']}:{m['quant']}"
+        for m in tomllib.load(open(MODELS_TOML, "rb")).get("models", [])
+    ]
 
 
 def format_ctx(n):
