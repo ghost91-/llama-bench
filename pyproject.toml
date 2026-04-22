@@ -1,0 +1,21 @@
+[project]
+name = "llama-bench"
+version = "0.1.0"
+description = "Benchmark llama.cpp GGUF models to find optimal context sizes"
+requires-python = ">=3.11"
+dependencies = [
+    "gguf>=0.18",
+    "huggingface-hub>=0.20",
+]
+
+[project.scripts]
+fit-bench = "fit_bench:main"
+download-models = "download_models:main"
+
+[tool.ruff]
+line-length = 99
+
+[dependency-groups]
+dev = [
+    "ruff>=0.15.11",
+]

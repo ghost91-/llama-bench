@@ -1,0 +1,10 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "permission": {
+    "bash": {
+      "uv run ruff check *": "allow",
+      "uv run ruff format *": "allow",
+      "uv sync": "allow"
+    }
+  }
+}
