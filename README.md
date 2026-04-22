@@ -32,42 +32,13 @@ uv run generate_models_ini.py --dry-run
    - **Dense models**: highest context that keeps all layers on GPU (`ngl = all`)
    - **MoE models**: highest context that keeps the maximum achievable `ngl`
 4. Benchmarks the chosen config with `llama-bench` (pp2048 + tg512)
-5. Appends the result to `fit-bench-results.md`
+5. Appends the result to `fit-bench-results.csv`
 
 With `--vision`, the fit-target increases by the mmproj file size, accounting for the VRAM cost of loading the vision encoder on GPU.
 
-## Results table
+## Results
 
-`fit-bench-results.md` holds one row per model/quant/provider combination. Vision-mode numbers appear as separate columns (`V` prefix), not separate rows.
-
-| Column | Meaning |
-|--------|---------|
-| Model | Short name (e.g. `Qwen3.5-9B`) |
-| Quant | Quantisation (e.g. `Q4_K_M`, `Q8_0`) |
-| Provider | HuggingFace uploader (`unsloth`, `bartowski`, `AesSedai`) |
-| Size | File size on disk |
-| Params | Parameter count |
-| Type | `Dense` or `MoE` |
-| Mmproj | Vision encoder size, or `-` if none |
-| Ctx | Best context size in text mode |
-| ngl | GPU layers in text mode (`all` = fully on GPU) |
-| MoE CPU | Layers whose MoE expert weights overflow to CPU (dense parts stay on GPU) |
-| pp2048 (t/s) | Prompt processing speed (text mode) |
-| tg512 (t/s) | Token generation speed (text mode) |
-| VCtx | Best context size in vision mode, or `-` |
-| Vngl | GPU layers in vision mode, or `-` |
-| Vpp2048 (t/s) | Prompt processing speed (vision mode), or `-` |
-| Vtg512 (t/s) | Token generation speed (vision mode), or `-` |
-| Vision | `yes` if model accepts image input |
-| Reason | `yes` if model supports chain-of-thought |
-| Switch | `yes` if thinking can be toggled per request |
-| Effort | Reasoning effort levels (`low/medium/high`), or `-` |
-
-### Vision columns
-
-The `V` columns show the same measurements when the vision encoder (mmproj) occupies VRAM alongside the model. When mmproj fits without reducing context or offloading layers, the `V` columns match the text columns. For larger models, mmproj forces lower context or fewer GPU layers — the `V` columns capture that gap.
-
-If all `V` columns are `-`, the model lacks vision capability.
+`fit-bench-results.csv` holds one row per model/quant/provider combination. Vision-mode numbers appear as separate columns (`v` prefix), not separate rows.
 
 ## models.ini generation
 
@@ -95,7 +66,7 @@ llama-bench/
   download_models.py      HF cache downloader
   generate_models_ini.py  models.ini generator
   sampler_config.py       per-family sampler settings
-  fit-bench-results.md    benchmark results (canonical data)
+  fit-bench-results.csv   benchmark results (canonical data)
   pyproject.toml          project config
   uv.lock                 dependency lock
   .venv/                  Python environment
