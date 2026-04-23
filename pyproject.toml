@@ -6,6 +6,8 @@ requires-python = ">=3.11"
 dependencies = [
     "gguf>=0.18",
     "huggingface-hub>=0.20",
+    "matplotlib>=3.10.8",
+    "pyside6>=6.6",
 ]
 
 [tool.ruff]
