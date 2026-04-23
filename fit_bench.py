@@ -34,6 +34,7 @@ from results import (
     append_result_row,
     display_name_from_tag,
     format_ctx,
+    format_mmproj,
     format_ngl,
     format_params,
     load_tags,
@@ -486,7 +487,7 @@ def write_result_row(tag, chosen, is_moe, bench_result, caps, vision_mode):
     quant = tag.split(":")[1] if ":" in tag else ""
     model_kind = "MoE" if is_moe else "Dense"
     mmproj_mib = get_mmproj_size_mib(tag)
-    mmproj_col = f"{mmproj_mib}M" if mmproj_mib > 0 else ""
+    mmproj_col = format_mmproj(mmproj_mib)
     size_gib = ""
     n_params = ""
     if bench_result:

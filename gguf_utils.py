@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 from gguf import GGUFReader
@@ -37,8 +38,6 @@ def get_mmproj_size_mib(tag):
 
     repo_files = {}
     for path in repo_dir.rglob("*.gguf"):
-        if path.suffix != ".gguf":
-            continue
         rel = _snapshot_relative_path(repo_dir, path)
         repo_files.setdefault(rel, path)
 
@@ -98,62 +97,53 @@ def detect_capabilities(tag):
     if ct_field:
         try:
             val = ct_field.contents()
-            if isinstance(val, str):
-                vl = val.lower()
-                vision = any(
-                    w in vl
-                    for w in [
-                        "<|image",
-                        "image_url",
-                        "boi_token",
-                        "eoi_token",
-                        "<image>",
-                        "image_pad",
-                        "<|vision",
-                    ]
+        except (UnicodeDecodeError, IndexError, TypeError, ValueError):
+            val = None
+        if isinstance(val, str):
+            vl = val.lower()
+            vision = any(
+                w in vl
+                for w in [
+                    "<|image",
+                    "image_url",
+                    "boi_token",
+                    "eoi_token",
+                    "<image>",
+                    "image_pad",
+                    "<|vision",
+                ]
+            )
+            reasoning = bool(
+                re.search(
+                    r"(?:enable_thinking|reasoning_content|\[think\]|</?think(?=[\s>/]))",
+                    vl,
                 )
-                reasoning = any(
-                    w in vl
-                    for w in [
-                        "enable_thinking",
-                        "reasoning_content",
-                        "think>",
-                        "</think",
-                        "<think",
-                        "[think]",
-                    ]
-                )
-                switchable = "enable_thinking" in vl
-                if "reasoning_effort" in vl:
-                    if (
-                        "none" in val.lower()
-                        and "high" in val.lower()
-                        and "medium" not in val.lower()
-                    ):
-                        effort_levels = ["none", "high"]
-                    elif "medium" in val.lower():
-                        effort_levels = ["low", "medium", "high"]
-                    elif "low" in val.lower():
-                        effort_levels = ["low", "high"]
-                elif "low_effort" in vl:
+            )
+            switchable = "enable_thinking" in vl
+            if "reasoning_effort" in vl:
+                if "none" in vl and "high" in vl and "medium" not in vl:
+                    effort_levels = ["none", "high"]
+                elif "medium" in vl:
+                    effort_levels = ["low", "medium", "high"]
+                elif "low" in vl:
                     effort_levels = ["low", "high"]
-        except Exception:
-            pass
+            elif "low_effort" in vl:
+                effort_levels = ["low", "high"]
 
     if not vision:
         tags_field = reader.get_field("general.tags")
         if tags_field:
             try:
                 tags_val = tags_field.contents()
-                if isinstance(tags_val, (list, tuple)):
-                    vision = any(
-                        "image" in str(t).lower()
-                        or "vision" in str(t).lower()
-                        or "any-to-any" in str(t).lower()
-                        for t in tags_val
-                    )
-            except Exception:
-                pass
+            except (UnicodeDecodeError, IndexError, TypeError, ValueError):
+                tags_val = None
+            if isinstance(tags_val, (list, tuple)):
+                vision = any(
+                    "image" in str(t).lower()
+                    or "vision" in str(t).lower()
+                    or "any-to-any" in str(t).lower()
+                    for t in tags_val
+                )
 
     effort_str = "/".join(effort_levels) if effort_levels else "-"
     return {

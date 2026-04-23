@@ -5,30 +5,18 @@ import json
 import os
 import sys
 
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, SCRIPT_DIR)
-
-from gguf_utils import (  # noqa: E402
-    detect_capabilities,
+from gguf_utils import (
     find_local_gguf_path,
     get_mmproj_size_mib,
 )
-from sampler_config import FAMILY_DESCRIPTIONS, SAMPLER_CONFIG  # noqa: E402
-from results import (  # noqa: E402
+from sampler_config import FAMILY_DESCRIPTIONS, SAMPLER_CONFIG
+from results import (
     MODELS_FILE,
     RESULTS_FILE,
     display_name_from_tag,
     load_models,
+    parse_ctx,
 )
-
-
-def parse_ctx(val):
-    if not val or val == "-":
-        return None
-    val = val.strip().lower()
-    if val.endswith("k"):
-        return int(float(val[:-1]) * 1000)
-    return int(val)
 
 
 def parse_ngl(val):
@@ -97,27 +85,22 @@ def generate_ini(models, results, output, dry_run):
         if find_local_gguf_path(full_tag) is None:
             print(f"WARNING: {full_tag} not found on disk, skipping", file=sys.stderr)
             continue
+        display_name = display_name_from_tag(full_tag)
+        provider_prefix = repo_id.split("/")[0]
+        entry = results.get((display_name, quant_tag, provider_prefix))
+        if not entry:
+            print(f"WARNING: {full_tag} has no benchmark results, skipping", file=sys.stderr)
+            continue
         if group != current_group:
             current_group = group
             desc = FAMILY_DESCRIPTIONS.get(group, group)
             summary = sampler_summary(group)
             sections.append({"type": "comment", "text": f"; {desc} — {summary}"})
-        display_name = display_name_from_tag(full_tag)
-        provider_prefix = repo_id.split("/")[0]
-        entry = results.get((display_name, quant_tag, provider_prefix))
-        if entry:
-            is_vision_capable = entry["vision"]
-            text_ctx = entry["actual_ctx"]
-            text_ngl = entry["ngl"]
-            vision_ctx = entry["vision_ctx"]
-            vision_ngl = entry["vision_ngl"]
-        else:
-            caps = detect_capabilities(full_tag)
-            is_vision_capable = caps["vision"] == "yes"
-            text_ctx = None
-            text_ngl = None
-            vision_ctx = None
-            vision_ngl = None
+        is_vision_capable = entry["vision"]
+        text_ctx = entry["actual_ctx"]
+        text_ngl = entry["ngl"]
+        vision_ctx = entry["vision_ctx"]
+        vision_ngl = entry["vision_ngl"]
         need_vision_section = is_vision_capable and (
             vision_ctx is not None and (vision_ctx != text_ctx or vision_ngl != text_ngl)
         )
@@ -128,6 +111,9 @@ def generate_ini(models, results, output, dry_run):
             text_props.append(("ctx-size", str(text_ctx)))
         if is_vision_capable and not need_vision_section:
             text_props.append(("mmproj-auto", "on"))
+            text_props.append(("mmproj-offload", "on"))
+            if mmproj_mib > 0:
+                text_props.append(("fit-target", str(512 + mmproj_mib)))
         text_props.extend(format_sampler_settings(group))
         sections.append({"type": "section", "name": full_tag, "props": text_props})
         if need_vision_section:
@@ -166,7 +152,9 @@ def generate_ini(models, results, output, dry_run):
     if dry_run:
         print(content, end="")
     else:
-        os.makedirs(os.path.dirname(output), exist_ok=True)
+        output_dir = os.path.dirname(output)
+        if output_dir:
+            os.makedirs(output_dir, exist_ok=True)
         with open(output, "w") as f:
             f.write(content)
         print(f"Wrote {output}")

@@ -6,65 +6,15 @@ import csv
 import os
 
 import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
 
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+from quant_order import QUANT_ORDER
+from results import RESULTS_FILE, parse_ctx
 
-QUANT_ORDER = {
-    "IQ1_M": 0,
-    "IQ2_XXS": 1,
-    "IQ2_XSS": 2,
-    "IQ2_XS": 3,
-    "IQ2_S": 4,
-    "IQ2_M": 5,
-    "Q2_K": 6,
-    "Q2_K_L": 7,
-    "UD-IQ2_XXS": 8,
-    "UD-IQ2_XSS": 9,
-    "UD-IQ2_M": 10,
-    "UD-Q2_K_XL": 11,
-    "IQ3_XXS": 12,
-    "IQ3_XS": 13,
-    "IQ3_S": 14,
-    "IQ3_M": 15,
-    "Q3_K_S": 16,
-    "Q3_K_M": 17,
-    "Q3_K_L": 18,
-    "Q3_K_XL": 19,
-    "UD-IQ3_XXS": 20,
-    "UD-IQ3_S": 21,
-    "UD-Q3_K_S": 22,
-    "UD-Q3_K_M": 23,
-    "UD-Q3_K_XL": 24,
-    "IQ4_XS": 25,
-    "IQ4_NL": 26,
-    "UD-IQ4_XS": 27,
-    "UD-IQ4_NL": 28,
-    "UD-IQ4_NL_XL": 29,
-    "MXFP4_MOE": 30,
-    "Q4_0": 31,
-    "Q4_1": 32,
-    "Q4_K_S": 33,
-    "Q4_K_M": 34,
-    "Q4_K_L": 35,
-    "UD-Q4_K_S": 36,
-    "UD-Q4_K_M": 37,
-    "UD-Q4_K_XL": 38,
-    "Q5_K_S": 39,
-    "Q5_K_M": 40,
-    "Q5_K_L": 41,
-    "UD-Q5_K_S": 42,
-    "UD-Q5_K_M": 43,
-    "UD-Q5_K_XL": 44,
-    "Q6_K": 45,
-    "Q6_K_L": 46,
-    "UD-Q6_K": 47,
-    "UD-Q6_K_XL": 48,
-    "Q8_0": 49,
-    "UD-Q8_K_XL": 50,
-}
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 PROVIDER_COLORS = {
     "unsloth": "#2166AC",
@@ -82,7 +32,6 @@ VISION_MARKERS = {
     "AesSedai": "P",
 }
 
-BENCH_FILE = os.path.join(SCRIPT_DIR, "fit-bench-results.csv")
 KLD_FILES = {
     "gemma-4-26B-A4B": os.path.join(SCRIPT_DIR, "Gemma4-26B-A4B-KLD.csv"),
     "Qwen3.6-35B-A3B": os.path.join(SCRIPT_DIR, "Qwen3.6-35B-A3B-KLD.csv"),
@@ -94,18 +43,9 @@ DISPLAY_NAMES = {
 }
 
 
-def parse_ctx(s):
-    if not s or s == "-":
-        return None
-    s = s.strip()
-    if s.endswith("k"):
-        return int(float(s[:-1]) * 1000)
-    return int(s)
-
-
 def load_bench():
     rows = []
-    with open(BENCH_FILE, newline="") as f:
+    with open(RESULTS_FILE, newline="") as f:
         for row in csv.DictReader(f):
             rows.append(row)
     return rows
@@ -143,18 +83,20 @@ def merge_kld_bench(kld_rows, bench_rows, model_name):
         vtg = float(b["vtg512_tps"]) if b.get("vtg512_tps", "") not in ("", "-") else None
         if ctx is None or size is None or pp is None or tg is None:
             continue
-        merged.append({
-            "quant": k["quant"],
-            "provider": k["provider"],
-            "kld": k["kld"],
-            "ctx": ctx,
-            "size_gib": size,
-            "pp2048_tps": pp,
-            "tg512_tps": tg,
-            "vctx": vctx,
-            "vpp2048_tps": vpp,
-            "vtg512_tps": vtg,
-        })
+        merged.append(
+            {
+                "quant": k["quant"],
+                "provider": k["provider"],
+                "kld": k["kld"],
+                "ctx": ctx,
+                "size_gib": size,
+                "pp2048_tps": pp,
+                "tg512_tps": tg,
+                "vctx": vctx,
+                "vpp2048_tps": vpp,
+                "vtg512_tps": vtg,
+            }
+        )
     merged.sort(key=lambda r: QUANT_ORDER.get(r["quant"], 99))
     return merged
 
@@ -196,7 +138,8 @@ def plot_model(model_name, data, out_dir, show_text=True, show_vision=True):
     for r in data:
         by_provider.setdefault(r["provider"], []).append(r)
 
-    prov_sort = lambda p: {"unsloth": 0, "bartowski": 1, "AesSedai": 2}.get(p, 9)
+    def provider_sort_key(provider):
+        return {"unsloth": 0, "bartowski": 1, "AesSedai": 2}.get(provider, 9)
 
     plot_specs = [
         ("ctx", "vctx", "Context Size (tokens)", "left", True),
@@ -206,7 +149,7 @@ def plot_model(model_name, data, out_dir, show_text=True, show_vision=True):
     ]
 
     for ax, (text_field, vis_field, xlabel, large_dir, has_vision) in zip(axes.flat, plot_specs):
-        for prov in sorted(by_provider, key=prov_sort):
+        for prov in sorted(by_provider, key=provider_sort_key):
             rows = by_provider[prov]
             color = PROVIDER_COLORS.get(prov, "#888888")
             tm = TEXT_MARKERS.get(prov, "o")
@@ -223,13 +166,17 @@ def plot_model(model_name, data, out_dir, show_text=True, show_vision=True):
         ax.set_yscale("log")
         ax.yaxis.set_major_locator(mticker.LogLocator(numticks=30))
         ax.yaxis.set_minor_locator(mticker.LogLocator(subs=[2, 3, 4, 5, 6, 7, 8, 9], numticks=30))
-        ax.yaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: f"{v:g}" if v >= 0.01 else f"{v:.0e}"))
+        ax.yaxis.set_major_formatter(
+            mticker.FuncFormatter(lambda v, _: f"{v:g}" if v >= 0.01 else f"{v:.0e}")
+        )
         ax.yaxis.set_minor_formatter(mticker.FuncFormatter(lambda v, _: f"{v:g}" if v < 1 else ""))
         ax.tick_params(axis="y", which="minor", labelsize=5, length=2)
         ax.grid(True, alpha=0.3, which="major")
         ax.grid(True, alpha=0.15, which="minor")
         if text_field == "ctx" or text_field == "vctx":
-            ax.xaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: f"{v/1000:.0f}k" if v >= 1000 else f"{v:.0f}"))
+            ax.xaxis.set_major_formatter(
+                mticker.FuncFormatter(lambda v, _: f"{v / 1000:.0f}k" if v >= 1000 else f"{v:.0f}")
+            )
         if large_dir == "left":
             ax.invert_xaxis()
         ax.legend(fontsize=7, loc="best")

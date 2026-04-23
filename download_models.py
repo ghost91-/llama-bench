@@ -28,8 +28,6 @@ from huggingface_hub import list_repo_files, scan_cache_dir, snapshot_download
 from hf_gguf import find_best_mmproj_file, find_matching_model_files
 from results import load_models
 
-MODELS = load_models()
-
 
 def get_repo_files(
     repo_id: str, repo_files_cache: dict[str, list[str] | None]
@@ -92,16 +90,18 @@ def main():
     if args.parallel < 1:
         parser.error("--parallel must be >= 1")
 
+    models = load_models()
+
     if args.list_groups:
-        groups = sorted(set(g for _, _, g in MODELS))
+        groups = sorted(set(g for _, _, g in models))
         print("Available groups:")
         for g in groups:
-            count = sum(1 for _, _, gr in MODELS if gr == g)
+            count = sum(1 for _, _, gr in models if gr == g)
             print(f"  {g} ({count} variants)")
         return
 
     print("=== llama.cpp Model Downloader ===")
-    print(f"Total model variants: {len(MODELS)}")
+    print(f"Total model variants: {len(models)}")
     if args.group:
         print(f"Filtering to groups: {', '.join(args.group)}")
     print()
@@ -111,13 +111,13 @@ def main():
     repo_files_cache: dict[str, list[str] | None] = {}
 
     repo_tasks = {}
-    for i, (repo_id, tag, group) in enumerate(MODELS, 1):
+    for i, (repo_id, tag, group) in enumerate(models, 1):
         if args.group and not any(group.startswith(g) for g in args.group):
             stats["skipped"] += 1
             continue
 
         label = f"{repo_id}:{tag}"
-        print(f"[{i}/{len(MODELS)}] {label}")
+        print(f"[{i}/{len(models)}] {label}")
 
         repo_files = get_repo_files(repo_id, repo_files_cache)
         if repo_files is None:

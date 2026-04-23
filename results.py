@@ -2,6 +2,8 @@ import csv
 import os
 import tomllib
 
+from quant_order import QUANT_ORDER
+
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 RESULTS_FILE = os.path.join(SCRIPT_DIR, "fit-bench-results.csv")
 CONFIG_HOME = os.environ.get("XDG_CONFIG_HOME", os.path.join(os.path.expanduser("~"), ".config"))
@@ -10,35 +12,6 @@ MODELS_TOML = os.path.join(SCRIPT_DIR, "models.toml")
 
 BENCH_PP = 2048
 BENCH_TG = 512
-
-QUANT_ORDER = {
-    "IQ4_XS": 0,
-    "UD-IQ4_XS": 1,
-    "UD-IQ4_NL_XL": 2,
-    "Q3_K_M": 3,
-    "UD-Q3_K_M": 4,
-    "Q3_K_XL": 5,
-    "UD-Q3_K_XL": 6,
-    "Q4_K_S": 7,
-    "UD-Q4_K_S": 8,
-    "Q4_K_M": 9,
-    "UD-Q4_K_M": 10,
-    "Q4_K_L": 11,
-    "UD-Q4_K_XL": 12,
-    "Q5_K_S": 13,
-    "UD-Q5_K_S": 14,
-    "Q5_K_M": 15,
-    "UD-Q5_K_M": 16,
-    "Q5_K_L": 17,
-    "UD-Q5_K_XL": 18,
-    "Q6_K": 19,
-    "UD-Q6_K": 20,
-    "Q6_K_L": 21,
-    "UD-Q6_K_XL": 22,
-    "Q8_0": 23,
-    "UD-Q8_K_XL": 24,
-    "MXFP4": 25,
-}
 
 PROVIDER_ORDER = {
     "unsloth": 0,
@@ -73,8 +46,8 @@ CSV_FIELDNAMES = [
     "effort",
 ]
 
-TEXT_COLS = [7, 8, 9, 10, 11]
-VISION_COLS = [12, 13, 14, 15]
+KNOWN_RESULT_COLS = set(CSV_FIELDNAMES)
+VISION_RESULT_COLS = ("vctx", "vngl", "vpp2048_tps", "vtg512_tps")
 
 
 def load_models():
@@ -84,20 +57,23 @@ def load_models():
 
 
 def load_tags():
-    return [
-        f"{m['repo']}:{m['quant']}"
-        for m in tomllib.load(open(MODELS_TOML, "rb")).get("models", [])
-    ]
+    return [f"{repo}:{quant}" for repo, quant, _ in load_models()]
+
+
+def parse_ctx(value):
+    if not value or value in ("-", "?"):
+        return None
+    value = value.strip().lower()
+    if value.endswith("k"):
+        return int(float(value[:-1]) * 1000)
+    return int(value)
 
 
 def format_ctx(n):
     if n is None:
         return "?"
-    if n >= 1000:
-        k = n / 1000
-        if k == int(k):
-            return f"{int(k)}k"
-        return f"{k:.0f}k"
+    if n >= 1000 and n % 1000 == 0:
+        return f"{n // 1000}k"
     return str(n)
 
 
@@ -125,6 +101,12 @@ def format_params(n):
     return str(n)
 
 
+def format_mmproj(mib):
+    if not mib:
+        return ""
+    return f"{int(mib)}M"
+
+
 def display_name_from_tag(tag):
     repo = tag.split(":")[0] if ":" in tag else tag
     name = repo.split("/")[-1]
@@ -147,30 +129,15 @@ def display_name_from_tag(tag):
     return name
 
 
-def load_tags_from_models_ini():
-    tags = []
-    if not os.path.exists(MODELS_FILE):
-        raise FileNotFoundError(f"models preset file not found: {MODELS_FILE}")
-    with open(MODELS_FILE) as f:
-        for line in f:
-            line = line.strip()
-            if not line.startswith("[") or not line.endswith("]"):
-                continue
-            section = line[1:-1]
-            if section == "*":
-                continue
-            tags.append(section)
-    return tags
-
-
 def sort_results_file():
     if not os.path.exists(RESULTS_FILE):
         return
     rows = []
     with open(RESULTS_FILE, newline="") as f:
         reader = csv.DictReader(f)
+        fieldnames = _result_fieldnames(reader.fieldnames)
         for row in reader:
-            rows.append(row)
+            rows.append(_normalize_result_row(row))
 
     def param_sort_val(p):
         if not p or p == "?":
@@ -192,7 +159,7 @@ def sort_results_file():
     rows.sort(key=sort_key)
 
     with open(RESULTS_FILE, "w", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=CSV_FIELDNAMES)
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows(rows)
 
@@ -201,14 +168,40 @@ def _row_key(row):
     return (row.get("model", ""), row.get("quant", ""), row.get("provider", ""))
 
 
+def _result_fieldnames(existing_fieldnames=None, extra_keys=None):
+    fieldnames = list(CSV_FIELDNAMES)
+    for names in (existing_fieldnames or [], extra_keys or []):
+        for name in names:
+            if name not in fieldnames:
+                fieldnames.append(name)
+    return fieldnames
+
+
+def _normalize_result_row(row):
+    normalized = dict(row)
+    for col in VISION_RESULT_COLS:
+        if normalized.get(col, "") == "-":
+            normalized[col] = ""
+    return normalized
+
+
+def _merge_nonempty_fields(merged, incoming, columns):
+    for col in columns:
+        value = incoming.get(col)
+        if value not in (None, ""):
+            merged[col] = value
+
+
 def _has_vision_data(row):
     return row.get("vctx", "") not in ("", "-")
 
 
 def append_result_row(row_dict):
+    row_dict = _normalize_result_row(row_dict)
     if not os.path.exists(RESULTS_FILE):
+        fieldnames = _result_fieldnames(extra_keys=row_dict.keys())
         with open(RESULTS_FILE, "w", newline="") as f:
-            writer = csv.DictWriter(f, fieldnames=CSV_FIELDNAMES)
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
             writer.writeheader()
             writer.writerow(row_dict)
         return
@@ -216,8 +209,9 @@ def append_result_row(row_dict):
     rows = []
     with open(RESULTS_FILE, newline="") as f:
         reader = csv.DictReader(f)
+        fieldnames = _result_fieldnames(reader.fieldnames, row_dict.keys())
         for r in reader:
-            rows.append(r)
+            rows.append(_normalize_result_row(r))
 
     incoming_key = _row_key(row_dict)
     incoming_has_vision = _has_vision_data(row_dict)
@@ -230,7 +224,10 @@ def append_result_row(row_dict):
 
     if merge_idx is not None:
         merged = dict(rows[merge_idx])
-        for col in [
+        _merge_nonempty_fields(
+            merged,
+            row_dict,
+            [
             "size_gib",
             "params",
             "model_type",
@@ -239,26 +236,22 @@ def append_result_row(row_dict):
             "reason",
             "switch",
             "effort",
-        ]:
-            if col in row_dict:
-                merged[col] = row_dict[col]
+            ],
+        )
         if incoming_has_vision:
-            for col in ["vctx", "vngl", "vpp2048_tps", "vtg512_tps"]:
-                if col in row_dict:
-                    merged[col] = row_dict[col]
+            _merge_nonempty_fields(merged, row_dict, ["vctx", "vngl", "vpp2048_tps", "vtg512_tps"])
         else:
-            for col in ["ctx", "ngl", "moe_cpu", "pp2048_tps", "tg512_tps"]:
-                if col in row_dict:
-                    merged[col] = row_dict[col]
+            _merge_nonempty_fields(merged, row_dict, ["ctx", "ngl", "moe_cpu", "pp2048_tps", "tg512_tps"])
             if not _has_vision_data(merged):
-                for col in ["vctx", "vngl", "vpp2048_tps", "vtg512_tps"]:
-                    if col in row_dict:
-                        merged[col] = row_dict[col]
+                _merge_nonempty_fields(merged, row_dict, VISION_RESULT_COLS)
+        for col, value in row_dict.items():
+            if col not in KNOWN_RESULT_COLS and value not in (None, ""):
+                merged[col] = value
         rows[merge_idx] = merged
     else:
         rows.append(row_dict)
 
     with open(RESULTS_FILE, "w", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=CSV_FIELDNAMES)
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows(rows)

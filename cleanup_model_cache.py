@@ -18,8 +18,6 @@ from huggingface_hub import scan_cache_dir
 from hf_gguf import find_best_mmproj_file, find_matching_model_files
 from results import load_models
 
-MODELS = load_models()
-
 
 def format_size(size: int) -> str:
     units = ["B", "KiB", "MiB", "GiB", "TiB"]
@@ -30,12 +28,11 @@ def format_size(size: int) -> str:
                 return f"{int(value)} {unit}"
             return f"{value:.1f} {unit}"
         value /= 1024
-    return f"{size} B"
 
 
-def build_desired_tags() -> dict[str, list[str]]:
+def build_desired_tags(models) -> dict[str, list[str]]:
     desired_tags = defaultdict(list)
-    for repo_id, tag, _group in MODELS:
+    for repo_id, tag, _group in models:
         desired_tags[repo_id].append(tag)
     return dict(desired_tags)
 
@@ -89,8 +86,9 @@ def main():
     parser.add_argument("-n", "--dry-run", action="store_true", help="Show what would be deleted")
     args = parser.parse_args()
 
+    models = load_models()
     cache_info = scan_cache_dir()
-    desired_tags = build_desired_tags()
+    desired_tags = build_desired_tags(models)
     keep_files_by_repo = build_keep_files_by_repo(cache_info, desired_tags)
 
     revisions_to_delete = []
@@ -126,7 +124,7 @@ def main():
     total_freed_size = delete_strategy.expected_freed_size + partial_freed_size
 
     print("=== HF Model Cache Cleanup ===")
-    print(f"Configured model variants: {len(MODELS)}")
+    print(f"Configured model variants: {len(models)}")
     print(f"Unlisted cached repos to delete: {len(delete_strategy.repos)}")
     print(f"Extra cached GGUF files to delete: {len(file_entries_to_delete)}")
     print(f"Expected space to free: {format_size(total_freed_size)}")
