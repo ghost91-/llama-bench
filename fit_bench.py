@@ -423,16 +423,41 @@ def run_bench(tag, ngl, ot, reps=REPS):
     }
 
 
+def print_markdown_table(headers, rows):
+    widths = [len(header) for header in headers]
+    normalized_rows = []
+    for row in rows:
+        normalized = ["" if value is None else str(value) for value in row]
+        normalized_rows.append(normalized)
+        for i, value in enumerate(normalized):
+            widths[i] = max(widths[i], len(value))
+
+    def format_row(row):
+        cells = [f"{value:<{widths[i]}}" for i, value in enumerate(row)]
+        return f"| {' | '.join(cells)} |"
+
+    separator = "|-" + "-|-".join("-" * width for width in widths) + "-|"
+    print(format_row(headers), flush=True)
+    print(separator, flush=True)
+    for row in normalized_rows:
+        print(format_row(row), flush=True)
+
+
 def print_scan_table(scan_results, chosen):
     print("Fit scan:", flush=True)
-    print("| Target Ctx | Actual Ctx | ngl | MoE CPU | Selected |", flush=True)
-    print("|---|---|---|---|---|", flush=True)
+    rows = []
     for r in scan_results:
         selected = "yes" if chosen and r["target_ctx"] == chosen["target_ctx"] else ""
-        print(
-            f"| {format_ctx(r['target_ctx'])} | {format_ctx(r['ctx'])} | {format_ngl(r['ngl'])} | {r['ot'] if r['ot'] else '?'} | {selected} |",
-            flush=True,
+        rows.append(
+            [
+                format_ctx(r["target_ctx"]),
+                format_ctx(r["ctx"]),
+                format_ngl(r["ngl"]),
+                r["ot"] if r["ot"] else "?",
+                selected,
+            ]
         )
+    print_markdown_table(["Target Ctx", "Actual Ctx", "ngl", "MoE CPU", "Selected"], rows)
 
 
 def print_summary(display_name, quant, provider, size_gib, chosen, is_moe, bench_result):
@@ -441,26 +466,40 @@ def print_summary(display_name, quant, provider, size_gib, chosen, is_moe, bench
     print(f"Results for {display_name} ({quant}, {provider}, {size_gib} GiB)", flush=True)
     print("RTX 4070 Laptop (8GB VRAM), 64GB RAM, -fa on", flush=True)
     print(flush=True)
-    header = f"| Type | Target Ctx | Actual Ctx | ngl | MoE CPU | pp{BENCH_PP} (t/s) | tg{BENCH_TG} (t/s) |"
-    sep = "|---|---|---|---|---|---|---|"
-    print(header, flush=True)
-    print(sep, flush=True)
+    headers = [
+        "Type",
+        "Target Ctx",
+        "Actual Ctx",
+        "ngl",
+        "MoE CPU",
+        f"pp{BENCH_PP} (t/s)",
+        f"tg{BENCH_TG} (t/s)",
+    ]
+    rows = []
     if chosen:
         pp_f = (
             f"{float(bench_result['pp_speed']):.1f}"
             if bench_result and bench_result.get("pp_speed")
-            else "-"
+            else ""
         )
         tg_f = (
             f"{float(bench_result['tg_speed']):.1f}"
             if bench_result and bench_result.get("tg_speed")
-            else "-"
+            else ""
         )
         model_kind = "MoE" if is_moe else "Dense"
-        print(
-            f"| {model_kind} | {format_ctx(chosen['target_ctx'])} | {format_ctx(chosen['ctx'])} | {format_ngl(chosen['ngl'])} | {chosen['ot']} | {pp_f} | {tg_f} |",
-            flush=True,
+        rows.append(
+            [
+                model_kind,
+                format_ctx(chosen["target_ctx"]),
+                format_ctx(chosen["ctx"]),
+                format_ngl(chosen["ngl"]),
+                chosen["ot"],
+                pp_f,
+                tg_f,
+            ]
         )
+    print_markdown_table(headers, rows)
 
 
 def write_result_row(tag, chosen, is_moe, bench_result, caps, vision_mode):
