@@ -207,6 +207,18 @@ def append_result_row(row_dict):
 
     if merge_idx is not None:
         merged = dict(rows[merge_idx])
+        for col in [
+            "size_gib",
+            "params",
+            "model_type",
+            "mmproj",
+            "vision",
+            "reason",
+            "switch",
+            "effort",
+        ]:
+            if col in row_dict:
+                merged[col] = row_dict[col]
         if incoming_has_vision:
             for col in ["vctx", "vngl", "vpp2048_tps", "vtg512_tps"]:
                 if col in row_dict:

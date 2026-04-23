@@ -1,9 +1,14 @@
-import re
 from pathlib import Path
 
 from gguf import GGUFReader
+from hf_gguf import find_best_mmproj_file, find_matching_model_files
 
 HF_CACHE_DIR = Path.home() / ".cache" / "huggingface" / "hub"
+
+
+def _snapshot_relative_path(repo_dir: Path, path: Path) -> str:
+    parts = path.relative_to(repo_dir).parts
+    return Path(*parts[1:]).as_posix()
 
 
 def find_local_gguf_path(tag):
@@ -12,32 +17,16 @@ def find_local_gguf_path(tag):
     if not repo_dir.exists():
         return None
 
-    candidates = []
+    candidates = {}
     for path in repo_dir.rglob("*.gguf"):
-        name = path.name
-        lower = name.lower()
-        if "mmproj" in lower or "imatrix" in lower:
-            continue
-        candidates.append(path)
+        rel = _snapshot_relative_path(repo_dir, path)
+        candidates.setdefault(rel, path)
 
-    patterns = [
-        re.compile(re.escape(quant) + r"[.-]", re.IGNORECASE),
-        re.compile(r"UD-" + re.escape(quant) + r"[.-]", re.IGNORECASE),
-        re.compile(r"[-.]" + re.escape(quant) + r"[-.]", re.IGNORECASE),
-        re.compile(r"[-.]" + re.escape(quant) + r"\.gguf$", re.IGNORECASE),
-    ]
-
-    matches = []
-    for pattern in patterns:
-        matches = [p for p in candidates if pattern.search(p.name)]
-        if matches:
-            break
-
+    matches = find_matching_model_files(sorted(candidates), quant)
     if not matches:
         return None
 
-    matches = sorted(matches, key=lambda p: ("00001-of" not in p.name, str(p)))
-    return matches[0]
+    return candidates[matches[0]]
 
 
 def get_mmproj_size_mib(tag):
@@ -46,16 +35,24 @@ def get_mmproj_size_mib(tag):
     if not repo_dir.exists():
         return 0
 
-    best = None
-    for path in repo_dir.rglob("mmproj*"):
-        if path.is_symlink() or path.suffix != ".gguf":
-            real = path.resolve()
-            if real.exists() and (best is None or real.stat().st_size > best.stat().st_size):
-                best = real
-        elif path.is_file() and (best is None or path.stat().st_size > best.stat().st_size):
-            best = path
+    repo_files = {}
+    for path in repo_dir.rglob("*.gguf"):
+        if path.suffix != ".gguf":
+            continue
+        rel = _snapshot_relative_path(repo_dir, path)
+        repo_files.setdefault(rel, path)
 
-    if best is None:
+    quant = tag.split(":", 1)[1] if ":" in tag else ""
+    model_files = find_matching_model_files(sorted(repo_files), quant)
+    if not model_files:
+        return 0
+
+    mmproj = find_best_mmproj_file(sorted(repo_files), model_files[0])
+    if mmproj is None:
+        return 0
+
+    best = repo_files[mmproj].resolve()
+    if not best.exists():
         return 0
     return best.stat().st_size // (1024 * 1024)
 

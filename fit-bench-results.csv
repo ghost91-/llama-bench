@@ -17,6 +17,10 @@ Qwen3.5-2B,Q5_K_XL,unsloth,1.36,1.9B,Dense,640M,262k,all,no,8896.8,134.3,262k,al
 Qwen3.5-2B,Q8_0,unsloth,1.86,1.9B,Dense,640M,262k,all,no,9499.5,103.5,262k,all,9333.4,102.4,yes,yes,yes,
 Qwen3.5-2B,Q8_0,bartowski,1.87,1.9B,Dense,640M,262k,all,no,9452.9,103.8,262k,all,9487.2,103.6,yes,yes,yes,
 Qwen3.5-2B,Q8_K_XL,unsloth,2.63,1.9B,Dense,640M,262k,all,no,9046.7,77.8,250k,all,9043.5,77.8,yes,yes,yes,
+Ministral-3-3B-Instruct-2512,Q4_K_M,unsloth,1.99,3.4B,Dense,802M,40k,all,no,6893.9,102.7,30k,all,6678.3,99.4,yes,no,-,-
+Ministral-3-3B-Instruct-2512,Q4_K_M,mistralai,1.99,3.4B,Dense,,40k,all,no,6863.8,102.7,,,,,yes,no,-,-
+Ministral-3-3B-Reasoning-2512,Q4_K_M,unsloth,1.99,3.4B,Dense,802M,40k,all,no,6872.6,102.7,30k,all,6841.6,101.0,yes,yes,no,-
+Ministral-3-3B-Reasoning-2512,Q4_K_M,mistralai,1.99,3.4B,Dense,,40k,all,no,6821.9,102.7,,,,,yes,yes,no,-
 Qwen3.5-4B,Q4_K_M,unsloth,2.54,4.2B,Dense,644M,125k,all,no,4038.7,72.5,100k,all,3942.5,71.7,yes,yes,yes,
 Qwen3.5-4B,Q4_K_M,bartowski,2.66,4.2B,Dense,644M,100k,all,no,3967.8,70.0,100k,all,3960.9,69.5,yes,yes,yes,
 Qwen3.5-4B,Q4_K_XL,unsloth,2.70,4.2B,Dense,644M,100k,all,no,3964.1,69.3,100k,all,3983.9,69.2,yes,yes,yes,
@@ -44,6 +48,10 @@ gemma-4-E4B,Q5_K_XL,unsloth,6.18,7.5B,Dense,945M,131k,all,no,4258.3,59.5,100k,al
 gemma-4-E4B,Q8_0,unsloth,7.62,7.5B,Dense,945M,75k,all,no,4458.3,43.7,30k,all,4525.0,44.0,yes,yes,yes,
 gemma-4-E4B,Q8_0,bartowski,7.46,7.5B,Dense,945M,100k,all,no,4556.5,45.1,40k,all,4439.6,45.1,yes,yes,yes,
 gemma-4-E4B,Q8_K_XL,unsloth,8.05,7.5B,Dense,945M,50k,all,no,4279.5,40.7,10k,all,4363.0,40.9,yes,yes,yes,
+Ministral-3-8B-Instruct-2512,Q4_K_M,unsloth,4.83,8.5B,Dense,818M,10k,all,no,3028.4,47.5,10k,all,3005.2,46.6,yes,no,-,-
+Ministral-3-8B-Instruct-2512,Q4_K_M,mistralai,4.83,8.5B,Dense,,10k,all,no,3007.2,46.8,,,,,yes,no,-,-
+Ministral-3-8B-Reasoning-2512,Q4_K_M,unsloth,4.83,8.5B,Dense,818M,10k,all,no,3025.7,47.0,10k,all,2994.6,46.6,yes,yes,no,-
+Ministral-3-8B-Reasoning-2512,Q4_K_M,mistralai,4.83,8.5B,Dense,,10k,all,no,2993.9,47.3,,,,,yes,yes,no,-
 Qwen3.5-9B,Q4_K_M,unsloth,5.28,9.0B,Dense,879M,50k,all,no,2617.3,43.1,20k,all,2619.4,43.0,yes,yes,yes,
 Qwen3.5-9B,Q4_K_M,bartowski,5.48,9.0B,Dense,879M,40k,all,no,2584.7,41.6,10k,all,2573.4,41.4,yes,yes,yes,
 Qwen3.5-9B,Q4_K_XL,unsloth,5.55,9.0B,Dense,879M,40k,all,no,2600.2,41.2,10k,all,2573.1,41.0,yes,yes,yes,
@@ -54,6 +62,10 @@ Qwen3.5-9B,Q6_K_XL,unsloth,8.15,9.0B,Dense,879M,5k,28,no,1673.5,19.7,10k,23,1184
 Qwen3.5-9B,Q8_0,unsloth,8.86,9.0B,Dense,879M,10k,25,no,1441.6,15.3,10k,21,1192.3,12.6,yes,yes,yes,
 Qwen3.5-9B,Q8_0,bartowski,8.88,9.0B,Dense,879M,10k,25,no,1439.3,15.2,10k,21,1002.6,12.2,yes,yes,yes,
 Qwen3.5-9B,Q8_K_XL,unsloth,12.07,9.0B,Dense,879M,10k,16,no,883.8,9.1,30k,13,698.3,7.7,yes,yes,yes,
+Ministral-3-14B-Instruct-2512,Q4_K_M,unsloth,7.67,13.5B,Dense,838M,5k,33,no,1144.5,17.1,5k,29,975.1,14.6,yes,no,-,-
+Ministral-3-14B-Instruct-2512,Q4_K_M,mistralai,7.67,13.5B,Dense,,5k,33,no,1289.6,17.3,,,,,yes,no,-,-
+Ministral-3-14B-Reasoning-2512,Q4_K_M,unsloth,7.67,13.5B,Dense,838M,5k,33,no,1295.6,17.3,5k,29,959.8,14.6,yes,yes,no,-
+Ministral-3-14B-Reasoning-2512,Q4_K_M,mistralai,7.67,13.5B,Dense,,5k,33,no,1271.1,17.3,,,,,yes,yes,no,-
 gpt-oss-20b,MXFP4,ggml-org,11.27,20.9B,MoE,,131k,25,yes(20),758.4,31.3,-,-,-,-,no,yes,yes,low/medium/high
 gemma-4-26B-A4B,IQ4_XS,unsloth,12.48,25.2B,MoE,1.1G,150k,31,yes(29),648.6,31.0,100k,31,656.1,31.1,yes,yes,yes,
 gemma-4-26B-A4B,IQ4_XS,bartowski,13.21,25.2B,MoE,1.1G,200k,31,yes(30),568.7,38.5,150k,31,572.1,38.2,yes,yes,yes,
@@ -63,6 +75,11 @@ gemma-4-26B-A4B,Q4_K_XL,unsloth,15.90,25.2B,MoE,1.1G,150k,31,yes(30),517.3,29.9,
 gemma-4-26B-A4B,Q5_K_M,unsloth,19.68,25.2B,MoE,1.1G,150k,31,yes(30),408.8,28.4,100k,31,414.2,28.4,yes,yes,yes,
 gemma-4-26B-A4B,Q5_K_M,bartowski,17.98,25.2B,MoE,1.1G,175k,31,yes(30),440.4,31.7,125k,31,437.1,31.7,yes,yes,yes,
 gemma-4-26B-A4B,Q5_K_XL,unsloth,19.75,25.2B,MoE,1.1G,150k,31,yes(30),393.6,25.7,100k,31,412.9,28.3,yes,yes,yes,
+Qwen3.5-27B,Q4_K_M,unsloth,15.58,26.9B,Dense,888M,10k,24,no,344.2,4.6,10k,20,268.4,4.2,yes,yes,yes,-
+Qwen3.5-27B,Q4_K_M,bartowski,15.94,26.9B,Dense,888M,5k,24,no,325.9,4.5,5k,20,263.4,4.1,yes,yes,yes,-
+Qwen3.6-27B,Q4_K_M,unsloth,15.65,26.9B,Dense,888M,10k,24,no,326.5,4.5,10k,20,259.2,4.2,yes,yes,yes,-
+Qwen3.6-27B,Q4_K_M,Jackrong,15.40,26.9B,Dense,888M,10k,24,no,333.1,4.6,5k,21,279.4,4.3,yes,yes,yes,-
+Qwen3.6-27B,Q4_K_M,AaryanK,15.40,26.9B,Dense,888M,10k,24,no,333.5,4.6,5k,21,279.3,4.3,yes,yes,yes,-
 GLM-4.7-Flash,Q4_K_M,unsloth,17.05,29.9B,MoE,,100k,48,yes(47),406.9,31.9,-,-,-,-,no,yes,yes,
 GLM-4.7-Flash,Q4_K_M,bartowski,17.20,29.9B,MoE,,100k,48,yes(47),402.0,30.4,-,-,-,-,no,yes,yes,
 GLM-4.7-Flash,Q4_K_XL,unsloth,16.31,29.9B,MoE,,100k,48,yes(47),420.3,33.2,-,-,-,-,no,yes,yes,
@@ -72,6 +89,8 @@ GLM-4.7-Flash,Q5_K_XL,unsloth,20.20,29.9B,MoE,,75k,48,yes(45),365.6,27.2,-,-,-,-
 GLM-4.7-Flash,Q8_0,unsloth,29.65,29.9B,MoE,,75k,48,yes(46),203.4,20.7,-,-,-,-,no,yes,yes,
 GLM-4.7-Flash,Q8_0,bartowski,29.65,29.9B,MoE,,75k,48,yes(46),197.6,20.6,-,-,-,-,no,yes,yes,
 GLM-4.7-Flash,Q8_K_XL,unsloth,33.17,29.9B,MoE,,75k,48,yes(47),178.1,17.5,-,-,-,-,no,yes,yes,
+gemma-4-31B,Q4_K_M,unsloth,17.05,30.7B,Dense,1145M,10k,19,no,275.9,3.8,5k,16,278.2,3.7,yes,yes,yes,-
+gemma-4-31B,Q4_K_M,bartowski,18.24,30.7B,Dense,1145M,10k,17,no,265.4,3.6,5k,14,210.8,3.4,yes,yes,yes,-
 Qwen3.6-35B-A3B,Q4_K_M,unsloth,20.60,34.7B,MoE,860M,175k,41,yes(39),439.4,35.3,150k,41,415.5,33.6,yes,yes,yes,
 Qwen3.6-35B-A3B,Q4_K_M,bartowski,19.91,34.7B,MoE,860M,200k,41,yes(40),433.5,37.9,175k,41,405.3,38.5,yes,yes,yes,
 Qwen3.6-35B-A3B,Q4_K_M,AesSedai,20.61,34.7B,MoE,860M,175k,41,yes(40),429.9,34.4,150k,41,404.7,34.0,yes,yes,yes,

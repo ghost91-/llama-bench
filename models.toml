@@ -531,3 +531,107 @@ group = "qwen3.6-35b-a3b"
 repo = "AesSedai/Qwen3.6-35B-A3B-GGUF"
 quant = "Q5_K_M"
 group = "qwen3.6-35b-a3b"
+
+# Gemma 4 31B (dense)
+[[models]]
+repo = "unsloth/gemma-4-31B-it-GGUF"
+quant = "Q4_K_M"
+group = "gemma-4-31b"
+
+[[models]]
+repo = "bartowski/google_gemma-4-31B-it-GGUF"
+quant = "Q4_K_M"
+group = "gemma-4-31b"
+
+# Qwen3.6 27B (dense)
+[[models]]
+repo = "unsloth/Qwen3.6-27B-GGUF"
+quant = "Q4_K_M"
+group = "qwen3.6-27b"
+
+[[models]]
+repo = "Jackrong/Qwen3.6-27B-GGUF"
+quant = "Q4_K_M"
+group = "qwen3.6-27b"
+
+[[models]]
+repo = "AaryanK/Qwen3.6-27B-GGUF"
+quant = "Q4_K_M"
+group = "qwen3.6-27b"
+
+# Qwen3.5 27B (dense)
+[[models]]
+repo = "unsloth/Qwen3.5-27B-GGUF"
+quant = "Q4_K_M"
+group = "qwen3.5-27b"
+
+[[models]]
+repo = "bartowski/Qwen_Qwen3.5-27B-GGUF"
+quant = "Q4_K_M"
+group = "qwen3.5-27b"
+
+# Ministral 3 3B Instruct
+[[models]]
+repo = "unsloth/Ministral-3-3B-Instruct-2512-GGUF"
+quant = "Q4_K_M"
+group = "ministral-3-3b-instruct"
+
+[[models]]
+repo = "mistralai/Ministral-3-3B-Instruct-2512-GGUF"
+quant = "Q4_K_M"
+group = "ministral-3-3b-instruct"
+
+# Ministral 3 3B Reasoning
+[[models]]
+repo = "unsloth/Ministral-3-3B-Reasoning-2512-GGUF"
+quant = "Q4_K_M"
+group = "ministral-3-3b-reasoning"
+
+[[models]]
+repo = "mistralai/Ministral-3-3B-Reasoning-2512-GGUF"
+quant = "Q4_K_M"
+group = "ministral-3-3b-reasoning"
+
+# Ministral 3 8B Instruct
+[[models]]
+repo = "unsloth/Ministral-3-8B-Instruct-2512-GGUF"
+quant = "Q4_K_M"
+group = "ministral-3-8b-instruct"
+
+[[models]]
+repo = "mistralai/Ministral-3-8B-Instruct-2512-GGUF"
+quant = "Q4_K_M"
+group = "ministral-3-8b-instruct"
+
+# Ministral 3 8B Reasoning
+[[models]]
+repo = "unsloth/Ministral-3-8B-Reasoning-2512-GGUF"
+quant = "Q4_K_M"
+group = "ministral-3-8b-reasoning"
+
+[[models]]
+repo = "mistralai/Ministral-3-8B-Reasoning-2512-GGUF"
+quant = "Q4_K_M"
+group = "ministral-3-8b-reasoning"
+
+# Ministral 3 14B Instruct
+[[models]]
+repo = "unsloth/Ministral-3-14B-Instruct-2512-GGUF"
+quant = "Q4_K_M"
+group = "ministral-3-14b-instruct"
+
+[[models]]
+repo = "mistralai/Ministral-3-14B-Instruct-2512-GGUF"
+quant = "Q4_K_M"
+group = "ministral-3-14b-instruct"
+
+# Ministral 3 14B Reasoning
+[[models]]
+repo = "unsloth/Ministral-3-14B-Reasoning-2512-GGUF"
+quant = "Q4_K_M"
+group = "ministral-3-14b-reasoning"
+
+[[models]]
+repo = "mistralai/Ministral-3-14B-Reasoning-2512-GGUF"
+quant = "Q4_K_M"
+group = "ministral-3-14b-reasoning"

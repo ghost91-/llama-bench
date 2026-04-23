@@ -8,10 +8,6 @@ dependencies = [
     "huggingface-hub>=0.20",
 ]
 
-[project.scripts]
-fit-bench = "fit_bench:main"
-download-models = "download_models:main"
-
 [tool.ruff]
 line-length = 99
 
