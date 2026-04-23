@@ -6,7 +6,7 @@ group = "gemma-4-e2b"
 
 [[models]]
 repo = "unsloth/gemma-4-E2B-it-GGUF"
-quant = "Q4_K_XL"
+quant = "UD-Q4_K_XL"
 group = "gemma-4-e2b"
 
 [[models]]
@@ -16,7 +16,7 @@ group = "gemma-4-e2b"
 
 [[models]]
 repo = "unsloth/gemma-4-E2B-it-GGUF"
-quant = "Q5_K_XL"
+quant = "UD-Q5_K_XL"
 group = "gemma-4-e2b"
 
 [[models]]
@@ -26,7 +26,7 @@ group = "gemma-4-e2b"
 
 [[models]]
 repo = "unsloth/gemma-4-E2B-it-GGUF"
-quant = "Q8_K_XL"
+quant = "UD-Q8_K_XL"
 group = "gemma-4-e2b"
 
 [[models]]
@@ -52,7 +52,7 @@ group = "gemma-4-e4b"
 
 [[models]]
 repo = "unsloth/gemma-4-E4B-it-GGUF"
-quant = "Q4_K_XL"
+quant = "UD-Q4_K_XL"
 group = "gemma-4-e4b"
 
 [[models]]
@@ -62,7 +62,7 @@ group = "gemma-4-e4b"
 
 [[models]]
 repo = "unsloth/gemma-4-E4B-it-GGUF"
-quant = "Q5_K_XL"
+quant = "UD-Q5_K_XL"
 group = "gemma-4-e4b"
 
 [[models]]
@@ -72,7 +72,7 @@ group = "gemma-4-e4b"
 
 [[models]]
 repo = "unsloth/gemma-4-E4B-it-GGUF"
-quant = "Q8_K_XL"
+quant = "UD-Q8_K_XL"
 group = "gemma-4-e4b"
 
 [[models]]
@@ -93,27 +93,42 @@ group = "gemma-4-e4b"
 # Gemma 4 26B A4B
 [[models]]
 repo = "unsloth/gemma-4-26B-A4B-it-GGUF"
-quant = "IQ4_XS"
+quant = "UD-IQ4_NL_XL"
 group = "gemma-4-26b-a4b"
 
 [[models]]
 repo = "unsloth/gemma-4-26B-A4B-it-GGUF"
-quant = "Q4_K_M"
+quant = "UD-IQ4_XS"
 group = "gemma-4-26b-a4b"
 
 [[models]]
 repo = "unsloth/gemma-4-26B-A4B-it-GGUF"
-quant = "Q4_K_XL"
+quant = "UD-Q4_K_M"
 group = "gemma-4-26b-a4b"
 
 [[models]]
 repo = "unsloth/gemma-4-26B-A4B-it-GGUF"
-quant = "Q5_K_M"
+quant = "UD-Q4_K_S"
 group = "gemma-4-26b-a4b"
 
 [[models]]
 repo = "unsloth/gemma-4-26B-A4B-it-GGUF"
-quant = "Q5_K_XL"
+quant = "UD-Q4_K_XL"
+group = "gemma-4-26b-a4b"
+
+[[models]]
+repo = "unsloth/gemma-4-26B-A4B-it-GGUF"
+quant = "UD-Q5_K_M"
+group = "gemma-4-26b-a4b"
+
+[[models]]
+repo = "unsloth/gemma-4-26B-A4B-it-GGUF"
+quant = "UD-Q5_K_S"
+group = "gemma-4-26b-a4b"
+
+[[models]]
+repo = "unsloth/gemma-4-26B-A4B-it-GGUF"
+quant = "UD-Q5_K_XL"
 group = "gemma-4-26b-a4b"
 
 [[models]]
@@ -123,12 +138,47 @@ group = "gemma-4-26b-a4b"
 
 [[models]]
 repo = "bartowski/google_gemma-4-26B-A4B-it-GGUF"
+quant = "Q4_K_L"
+group = "gemma-4-26b-a4b"
+
+[[models]]
+repo = "bartowski/google_gemma-4-26B-A4B-it-GGUF"
 quant = "Q4_K_M"
 group = "gemma-4-26b-a4b"
 
 [[models]]
 repo = "bartowski/google_gemma-4-26B-A4B-it-GGUF"
+quant = "Q4_K_S"
+group = "gemma-4-26b-a4b"
+
+[[models]]
+repo = "bartowski/google_gemma-4-26B-A4B-it-GGUF"
+quant = "Q5_K_L"
+group = "gemma-4-26b-a4b"
+
+[[models]]
+repo = "bartowski/google_gemma-4-26B-A4B-it-GGUF"
 quant = "Q5_K_M"
+group = "gemma-4-26b-a4b"
+
+[[models]]
+repo = "bartowski/google_gemma-4-26B-A4B-it-GGUF"
+quant = "Q5_K_S"
+group = "gemma-4-26b-a4b"
+
+[[models]]
+repo = "bartowski/google_gemma-4-26B-A4B-it-GGUF"
+quant = "Q6_K"
+group = "gemma-4-26b-a4b"
+
+[[models]]
+repo = "bartowski/google_gemma-4-26B-A4B-it-GGUF"
+quant = "Q6_K_L"
+group = "gemma-4-26b-a4b"
+
+[[models]]
+repo = "bartowski/google_gemma-4-26B-A4B-it-GGUF"
+quant = "Q8_0"
 group = "gemma-4-26b-a4b"
 
 # GLM 4.7 Flash
@@ -139,7 +189,7 @@ group = "glm-4.7-flash"
 
 [[models]]
 repo = "unsloth/GLM-4.7-Flash-GGUF"
-quant = "Q4_K_XL"
+quant = "UD-Q4_K_XL"
 group = "glm-4.7-flash"
 
 [[models]]
@@ -149,7 +199,7 @@ group = "glm-4.7-flash"
 
 [[models]]
 repo = "unsloth/GLM-4.7-Flash-GGUF"
-quant = "Q5_K_XL"
+quant = "UD-Q5_K_XL"
 group = "glm-4.7-flash"
 
 [[models]]
@@ -159,7 +209,7 @@ group = "glm-4.7-flash"
 
 [[models]]
 repo = "unsloth/GLM-4.7-Flash-GGUF"
-quant = "Q8_K_XL"
+quant = "UD-Q8_K_XL"
 group = "glm-4.7-flash"
 
 [[models]]
@@ -192,12 +242,12 @@ group = "gpt-oss-120b"
 # Mistral Small 4 119B
 [[models]]
 repo = "unsloth/Mistral-Small-4-119B-2603-GGUF"
-quant = "IQ4_XS"
+quant = "UD-IQ4_XS"
 group = "mistral-small-4-119b"
 
 [[models]]
 repo = "unsloth/Mistral-Small-4-119B-2603-GGUF"
-quant = "Q3_K_M"
+quant = "UD-Q3_K_M"
 group = "mistral-small-4-119b"
 
 [[models]]
@@ -223,7 +273,7 @@ group = "qwen3-coder-next-80b"
 
 [[models]]
 repo = "unsloth/Qwen3-Coder-Next-GGUF"
-quant = "Q4_K_XL"
+quant = "UD-Q4_K_XL"
 group = "qwen3-coder-next-80b"
 
 [[models]]
@@ -239,7 +289,7 @@ group = "qwen3.5-0.8b"
 
 [[models]]
 repo = "unsloth/Qwen3.5-0.8B-GGUF"
-quant = "Q4_K_XL"
+quant = "UD-Q4_K_XL"
 group = "qwen3.5-0.8b"
 
 [[models]]
@@ -249,7 +299,7 @@ group = "qwen3.5-0.8b"
 
 [[models]]
 repo = "unsloth/Qwen3.5-0.8B-GGUF"
-quant = "Q5_K_XL"
+quant = "UD-Q5_K_XL"
 group = "qwen3.5-0.8b"
 
 [[models]]
@@ -259,7 +309,7 @@ group = "qwen3.5-0.8b"
 
 [[models]]
 repo = "unsloth/Qwen3.5-0.8B-GGUF"
-quant = "Q8_K_XL"
+quant = "UD-Q8_K_XL"
 group = "qwen3.5-0.8b"
 
 [[models]]
@@ -285,7 +335,7 @@ group = "qwen3.5-2b"
 
 [[models]]
 repo = "unsloth/Qwen3.5-2B-GGUF"
-quant = "Q4_K_XL"
+quant = "UD-Q4_K_XL"
 group = "qwen3.5-2b"
 
 [[models]]
@@ -295,7 +345,7 @@ group = "qwen3.5-2b"
 
 [[models]]
 repo = "unsloth/Qwen3.5-2B-GGUF"
-quant = "Q5_K_XL"
+quant = "UD-Q5_K_XL"
 group = "qwen3.5-2b"
 
 [[models]]
@@ -305,7 +355,7 @@ group = "qwen3.5-2b"
 
 [[models]]
 repo = "unsloth/Qwen3.5-2B-GGUF"
-quant = "Q8_K_XL"
+quant = "UD-Q8_K_XL"
 group = "qwen3.5-2b"
 
 [[models]]
@@ -331,7 +381,7 @@ group = "qwen3.5-4b"
 
 [[models]]
 repo = "unsloth/Qwen3.5-4B-GGUF"
-quant = "Q4_K_XL"
+quant = "UD-Q4_K_XL"
 group = "qwen3.5-4b"
 
 [[models]]
@@ -341,7 +391,7 @@ group = "qwen3.5-4b"
 
 [[models]]
 repo = "unsloth/Qwen3.5-4B-GGUF"
-quant = "Q5_K_XL"
+quant = "UD-Q5_K_XL"
 group = "qwen3.5-4b"
 
 [[models]]
@@ -351,7 +401,7 @@ group = "qwen3.5-4b"
 
 [[models]]
 repo = "unsloth/Qwen3.5-4B-GGUF"
-quant = "Q8_K_XL"
+quant = "UD-Q8_K_XL"
 group = "qwen3.5-4b"
 
 [[models]]
@@ -377,7 +427,7 @@ group = "qwen3.5-9b"
 
 [[models]]
 repo = "unsloth/Qwen3.5-9B-GGUF"
-quant = "Q4_K_XL"
+quant = "UD-Q4_K_XL"
 group = "qwen3.5-9b"
 
 [[models]]
@@ -387,12 +437,12 @@ group = "qwen3.5-9b"
 
 [[models]]
 repo = "unsloth/Qwen3.5-9B-GGUF"
-quant = "Q5_K_XL"
+quant = "UD-Q5_K_XL"
 group = "qwen3.5-9b"
 
 [[models]]
 repo = "unsloth/Qwen3.5-9B-GGUF"
-quant = "Q6_K_XL"
+quant = "UD-Q6_K_XL"
 group = "qwen3.5-9b"
 
 [[models]]
@@ -402,7 +452,7 @@ group = "qwen3.5-9b"
 
 [[models]]
 repo = "unsloth/Qwen3.5-9B-GGUF"
-quant = "Q8_K_XL"
+quant = "UD-Q8_K_XL"
 group = "qwen3.5-9b"
 
 [[models]]
@@ -423,7 +473,7 @@ group = "qwen3.5-9b"
 # Qwen3.5 122B A10B
 [[models]]
 repo = "unsloth/Qwen3.5-122B-A10B-GGUF"
-quant = "IQ4_XS"
+quant = "UD-IQ4_XS"
 group = "qwen3.5-122b-a10b"
 
 [[models]]
@@ -433,7 +483,7 @@ group = "qwen3.5-122b-a10b"
 
 [[models]]
 repo = "unsloth/Qwen3.5-122B-A10B-GGUF"
-quant = "Q3_K_XL"
+quant = "UD-Q3_K_XL"
 group = "qwen3.5-122b-a10b"
 
 [[models]]
@@ -479,22 +529,52 @@ group = "qwen3.5-122b-a10b"
 # Qwen3.6 35B A3B
 [[models]]
 repo = "unsloth/Qwen3.6-35B-A3B-GGUF"
-quant = "Q4_K_M"
+quant = "UD-IQ4_NL_XL"
 group = "qwen3.6-35b-a3b"
 
 [[models]]
 repo = "unsloth/Qwen3.6-35B-A3B-GGUF"
-quant = "Q4_K_XL"
+quant = "UD-IQ4_XS"
 group = "qwen3.6-35b-a3b"
 
 [[models]]
 repo = "unsloth/Qwen3.6-35B-A3B-GGUF"
-quant = "Q5_K_M"
+quant = "UD-Q4_K_M"
 group = "qwen3.6-35b-a3b"
 
 [[models]]
 repo = "unsloth/Qwen3.6-35B-A3B-GGUF"
-quant = "Q5_K_XL"
+quant = "UD-Q4_K_S"
+group = "qwen3.6-35b-a3b"
+
+[[models]]
+repo = "unsloth/Qwen3.6-35B-A3B-GGUF"
+quant = "UD-Q4_K_XL"
+group = "qwen3.6-35b-a3b"
+
+[[models]]
+repo = "unsloth/Qwen3.6-35B-A3B-GGUF"
+quant = "UD-Q5_K_M"
+group = "qwen3.6-35b-a3b"
+
+[[models]]
+repo = "unsloth/Qwen3.6-35B-A3B-GGUF"
+quant = "UD-Q5_K_S"
+group = "qwen3.6-35b-a3b"
+
+[[models]]
+repo = "unsloth/Qwen3.6-35B-A3B-GGUF"
+quant = "UD-Q5_K_XL"
+group = "qwen3.6-35b-a3b"
+
+[[models]]
+repo = "unsloth/Qwen3.6-35B-A3B-GGUF"
+quant = "UD-Q6_K"
+group = "qwen3.6-35b-a3b"
+
+[[models]]
+repo = "unsloth/Qwen3.6-35B-A3B-GGUF"
+quant = "UD-Q6_K_XL"
 group = "qwen3.6-35b-a3b"
 
 [[models]]
@@ -504,7 +584,17 @@ group = "qwen3.6-35b-a3b"
 
 [[models]]
 repo = "unsloth/Qwen3.6-35B-A3B-GGUF"
-quant = "Q8_K_XL"
+quant = "UD-Q8_K_XL"
+group = "qwen3.6-35b-a3b"
+
+[[models]]
+repo = "bartowski/Qwen_Qwen3.6-35B-A3B-GGUF"
+quant = "IQ4_XS"
+group = "qwen3.6-35b-a3b"
+
+[[models]]
+repo = "bartowski/Qwen_Qwen3.6-35B-A3B-GGUF"
+quant = "Q4_K_L"
 group = "qwen3.6-35b-a3b"
 
 [[models]]
@@ -514,12 +604,42 @@ group = "qwen3.6-35b-a3b"
 
 [[models]]
 repo = "bartowski/Qwen_Qwen3.6-35B-A3B-GGUF"
+quant = "Q4_K_S"
+group = "qwen3.6-35b-a3b"
+
+[[models]]
+repo = "bartowski/Qwen_Qwen3.6-35B-A3B-GGUF"
+quant = "Q5_K_L"
+group = "qwen3.6-35b-a3b"
+
+[[models]]
+repo = "bartowski/Qwen_Qwen3.6-35B-A3B-GGUF"
 quant = "Q5_K_M"
 group = "qwen3.6-35b-a3b"
 
 [[models]]
 repo = "bartowski/Qwen_Qwen3.6-35B-A3B-GGUF"
+quant = "Q5_K_S"
+group = "qwen3.6-35b-a3b"
+
+[[models]]
+repo = "bartowski/Qwen_Qwen3.6-35B-A3B-GGUF"
+quant = "Q6_K"
+group = "qwen3.6-35b-a3b"
+
+[[models]]
+repo = "bartowski/Qwen_Qwen3.6-35B-A3B-GGUF"
+quant = "Q6_K_L"
+group = "qwen3.6-35b-a3b"
+
+[[models]]
+repo = "bartowski/Qwen_Qwen3.6-35B-A3B-GGUF"
 quant = "Q8_0"
+group = "qwen3.6-35b-a3b"
+
+[[models]]
+repo = "AesSedai/Qwen3.6-35B-A3B-GGUF"
+quant = "IQ4_XS"
 group = "qwen3.6-35b-a3b"
 
 [[models]]
@@ -530,6 +650,11 @@ group = "qwen3.6-35b-a3b"
 [[models]]
 repo = "AesSedai/Qwen3.6-35B-A3B-GGUF"
 quant = "Q5_K_M"
+group = "qwen3.6-35b-a3b"
+
+[[models]]
+repo = "AesSedai/Qwen3.6-35B-A3B-GGUF"
+quant = "Q6_K"
 group = "qwen3.6-35b-a3b"
 
 # Gemma 4 31B (dense)

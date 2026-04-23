@@ -21,6 +21,7 @@ Usage:
 
 import argparse
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from huggingface_hub import list_repo_files, scan_cache_dir, snapshot_download
 
@@ -79,7 +80,17 @@ def main():
     parser.add_argument(
         "--list-groups", action="store_true", help="List available groups and exit"
     )
+    parser.add_argument(
+        "-p",
+        "--parallel",
+        type=int,
+        default=4,
+        help="Number of repos to download in parallel (default: 4)",
+    )
     args = parser.parse_args()
+
+    if args.parallel < 1:
+        parser.error("--parallel must be >= 1")
 
     if args.list_groups:
         groups = sorted(set(g for _, _, g in MODELS))
@@ -156,22 +167,36 @@ def main():
         return
 
     total_models = sum(len(task["labels"]) for task in repo_tasks.values())
-    print(f"\n=== Downloading {total_models} model(s) from {len(repo_tasks)} repo(s) ===\n")
+    print(
+        f"\n=== Downloading {total_models} model(s) from {len(repo_tasks)} repo(s) "
+        f"with {args.parallel} parallel repo worker(s) ===\n"
+    )
 
-    for i, (repo_id, task) in enumerate(repo_tasks.items(), 1):
-        files = sorted(task["files"])
-        labels = task["labels"]
-        print(f"[{i}/{len(repo_tasks)}] {repo_id} ({len(files)} file(s), {len(labels)} model(s))")
-        try:
-            snapshot_download(repo_id=repo_id, allow_patterns=files)
-            for label in labels:
-                print(f"  [OK] {label}")
-                stats["downloaded"] += 1
-        except Exception as err:
-            for label in labels:
-                print(f"  [FAILED] {label}: {err}", file=sys.stderr)
-                stats["failed"] += 1
-        print()
+    repo_items = list(repo_tasks.items())
+    for i, (repo_id, task) in enumerate(repo_items, 1):
+        print(
+            f"[{i}/{len(repo_items)}] {repo_id} ({len(task['files'])} file(s), {len(task['labels'])} model(s))"
+        )
+
+    def download_repo(item):
+        repo_id, task = item
+        snapshot_download(repo_id=repo_id, allow_patterns=sorted(task["files"]))
+        return task["labels"]
+
+    with ThreadPoolExecutor(max_workers=args.parallel) as pool:
+        futures = {pool.submit(download_repo, item): item for item in repo_items}
+        for future in as_completed(futures):
+            try:
+                labels = future.result()
+                for label in labels:
+                    print(f"  [OK] {label}")
+                    stats["downloaded"] += 1
+            except Exception as err:
+                _repo_id, task = futures[future]
+                for label in task["labels"]:
+                    print(f"  [FAILED] {label}: {err}", file=sys.stderr)
+                    stats["failed"] += 1
+            print()
 
     print("=== Done ===")
     print(

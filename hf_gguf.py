@@ -11,7 +11,7 @@ def split_gguf_path(path: str) -> tuple[str, str, int, int]:
         index = int(match.group(2))
         count = int(match.group(3))
 
-    match = re.search(r"[-.]([A-Z0-9_]+)$", prefix, re.IGNORECASE)
+    match = re.search(r"[-.](UD-[A-Z0-9_]+|[A-Z0-9_]+)$", prefix, re.IGNORECASE)
     tag = match.group(1).upper() if match else ""
     return prefix, tag, index, count
 
@@ -28,18 +28,9 @@ def is_model_file(path: str) -> bool:
 
 
 def find_matching_model_files(repo_files: list[str], tag: str) -> list[str]:
-    candidates = [f for f in repo_files if is_model_file(f)]
-    patterns = [
-        re.compile(re.escape(tag) + r"[.-]", re.IGNORECASE),
-        re.compile(r"UD-" + re.escape(tag) + r"[.-]", re.IGNORECASE),
-        re.compile(r"[-.]" + re.escape(tag) + r"[-.]", re.IGNORECASE),
-        re.compile(r"[-.]" + re.escape(tag) + r"\.gguf$", re.IGNORECASE),
-    ]
-    for pattern in patterns:
-        matches = sorted((f for f in candidates if pattern.search(f)), key=_model_sort_key)
-        if matches:
-            return matches
-    return []
+    want = tag.upper()
+    matches = [f for f in repo_files if is_model_file(f) and split_gguf_path(f)[1] == want]
+    return sorted(matches, key=_model_sort_key)
 
 
 def find_best_mmproj_file(repo_files: list[str], model_path: str) -> str | None:

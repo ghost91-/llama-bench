@@ -13,19 +13,42 @@ BENCH_TG = 512
 
 QUANT_ORDER = {
     "IQ4_XS": 0,
-    "Q3_K_M": 1,
-    "Q3_K_XL": 2,
-    "Q4_K_M": 3,
-    "Q4_K_XL": 4,
-    "Q5_K_M": 5,
-    "Q5_K_XL": 6,
-    "Q6_K_XL": 7,
-    "Q8_0": 8,
-    "Q8_K_XL": 9,
-    "MXFP4": 10,
+    "UD-IQ4_XS": 1,
+    "UD-IQ4_NL_XL": 2,
+    "Q3_K_M": 3,
+    "UD-Q3_K_M": 4,
+    "Q3_K_XL": 5,
+    "UD-Q3_K_XL": 6,
+    "Q4_K_S": 7,
+    "UD-Q4_K_S": 8,
+    "Q4_K_M": 9,
+    "UD-Q4_K_M": 10,
+    "Q4_K_L": 11,
+    "UD-Q4_K_XL": 12,
+    "Q5_K_S": 13,
+    "UD-Q5_K_S": 14,
+    "Q5_K_M": 15,
+    "UD-Q5_K_M": 16,
+    "Q5_K_L": 17,
+    "UD-Q5_K_XL": 18,
+    "Q6_K": 19,
+    "UD-Q6_K": 20,
+    "Q6_K_L": 21,
+    "UD-Q6_K_XL": 22,
+    "Q8_0": 23,
+    "UD-Q8_K_XL": 24,
+    "MXFP4": 25,
 }
 
-PROVIDER_ORDER = {"unsloth": 0, "bartowski": 1, "AesSedai": 2, "ggml-org": 3}
+PROVIDER_ORDER = {
+    "unsloth": 0,
+    "bartowski": 1,
+    "AesSedai": 2,
+    "mistralai": 3,
+    "ggml-org": 4,
+    "Jackrong": 5,
+    "AaryanK": 6,
+}
 
 CSV_FIELDNAMES = [
     "model",
