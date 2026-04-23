@@ -19,6 +19,8 @@ from hf_gguf import find_best_mmproj_file, find_matching_model_files
 from results import load_models
 
 MODELS = load_models()
+
+
 def format_size(size: int) -> str:
     units = ["B", "KiB", "MiB", "GiB", "TiB"]
     value = float(size)
@@ -38,12 +40,20 @@ def build_desired_tags() -> dict[str, list[str]]:
     return dict(desired_tags)
 
 
-def build_keep_files_by_repo(cache_info, desired_tags: dict[str, list[str]]) -> dict[str, set[str]]:
+def build_keep_files_by_repo(
+    cache_info, desired_tags: dict[str, list[str]]
+) -> dict[str, set[str]]:
     keep_files_by_repo = {}
     for repo in cache_info.repos:
-        if repo.repo_type != "model" or repo.repo_id not in desired_tags or not repo_has_cached_gguf(repo):
+        if (
+            repo.repo_type != "model"
+            or repo.repo_id not in desired_tags
+            or not repo_has_cached_gguf(repo)
+        ):
             continue
-        repo_files = sorted({file.file_name for revision in repo.revisions for file in revision.files})
+        repo_files = sorted(
+            {file.file_name for revision in repo.revisions for file in revision.files}
+        )
         keep_files = set()
         for tag in desired_tags[repo.repo_id]:
             model_files = find_matching_model_files(repo_files, tag)
@@ -57,7 +67,9 @@ def build_keep_files_by_repo(cache_info, desired_tags: dict[str, list[str]]) -> 
 
 
 def repo_has_cached_gguf(repo) -> bool:
-    return any(file.file_name.endswith(".gguf") for revision in repo.revisions for file in revision.files)
+    return any(
+        file.file_name.endswith(".gguf") for revision in repo.revisions for file in revision.files
+    )
 
 
 def prune_empty_dirs(start: Path, stop_before: Path) -> None:

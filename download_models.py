@@ -28,7 +28,11 @@ from hf_gguf import find_best_mmproj_file, find_matching_model_files
 from results import load_models
 
 MODELS = load_models()
-def get_repo_files(repo_id: str, repo_files_cache: dict[str, list[str] | None]) -> list[str] | None:
+
+
+def get_repo_files(
+    repo_id: str, repo_files_cache: dict[str, list[str] | None]
+) -> list[str] | None:
     if repo_id not in repo_files_cache:
         try:
             repo_files_cache[repo_id] = list_repo_files(repo_id)
@@ -157,10 +161,7 @@ def main():
     for i, (repo_id, task) in enumerate(repo_tasks.items(), 1):
         files = sorted(task["files"])
         labels = task["labels"]
-        print(
-            f"[{i}/{len(repo_tasks)}] {repo_id} "
-            f"({len(files)} file(s), {len(labels)} model(s))"
-        )
+        print(f"[{i}/{len(repo_tasks)}] {repo_id} ({len(files)} file(s), {len(labels)} model(s))")
         try:
             snapshot_download(repo_id=repo_id, allow_patterns=files)
             for label in labels:
