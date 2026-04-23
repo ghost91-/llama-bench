@@ -15,7 +15,6 @@ The scan must therefore run to completion to find the true max ngl.
 
 Usage:
     python fit-bench.py unsloth/Qwen3.6-35B-A3B-GGUF:Q4_K_M
-    python fit-bench.py unsloth/Qwen3.6-35B-A3B-GGUF:Q4_K_M --ctx 5000 10000 20000 30000 50000 75000
     python fit-bench.py unsloth/Qwen3.6-35B-A3B-GGUF:Q4_K_M --list
 """
 
@@ -216,22 +215,6 @@ def build_ctx_list(max_ctx):
         steps.append(max_ctx)
 
     return steps
-
-
-def normalize_ctx_targets(ctx_targets, max_ctx):
-    normalized = []
-    for ctx in ctx_targets:
-        if ctx == 0 and max_ctx:
-            ctx = max_ctx
-        normalized.append(ctx)
-
-    seen = set()
-    deduped = []
-    for ctx in normalized:
-        if ctx not in seen:
-            deduped.append(ctx)
-            seen.add(ctx)
-    return deduped
 
 
 def parse_fit_params(params_str):
@@ -571,8 +554,7 @@ def benchmark_tag(tag, args):
                 f"vision model detected (mmproj={mmproj_mib} MiB) — running in text mode (fit-target={FIT_TARGET})"
             )
 
-    ctx_targets = args.ctx if args.ctx else build_ctx_list(max_ctx)
-    ctx_targets = normalize_ctx_targets(ctx_targets, max_ctx)
+    ctx_targets = build_ctx_list(max_ctx)
 
     log(f"Model: {tag}")
     log(f"Max ctx: {format_ctx(max_ctx)}")
@@ -640,9 +622,6 @@ def main():
     parser.add_argument("tags", nargs="*", help="HF repo:quant tags")
     parser.add_argument(
         "--all", action="store_true", help="Run sequentially for all tags from models.toml"
-    )
-    parser.add_argument(
-        "--ctx", nargs="+", type=int, default=None, help="Candidate context sizes to search"
     )
     parser.add_argument("--reps", type=int, default=REPS, help="Repetitions per test")
     parser.add_argument(
