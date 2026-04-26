@@ -132,6 +132,26 @@ quant = "UD-Q5_K_XL"
 group = "gemma-4-26b-a4b"
 
 [[models]]
+repo = "unsloth/gemma-4-26B-A4B-it-GGUF"
+quant = "UD-Q6_K"
+group = "gemma-4-26b-a4b"
+
+[[models]]
+repo = "unsloth/gemma-4-26B-A4B-it-GGUF"
+quant = "UD-Q6_K_XL"
+group = "gemma-4-26b-a4b"
+
+[[models]]
+repo = "unsloth/gemma-4-26B-A4B-it-GGUF"
+quant = "Q8_0"
+group = "gemma-4-26b-a4b"
+
+[[models]]
+repo = "unsloth/gemma-4-26B-A4B-it-GGUF"
+quant = "UD-Q8_K_XL"
+group = "gemma-4-26b-a4b"
+
+[[models]]
 repo = "bartowski/google_gemma-4-26B-A4B-it-GGUF"
 quant = "IQ4_XS"
 group = "gemma-4-26b-a4b"

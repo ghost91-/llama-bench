@@ -10,8 +10,17 @@ CONFIG_HOME = os.environ.get("XDG_CONFIG_HOME", os.path.join(os.path.expanduser(
 MODELS_FILE = os.path.join(CONFIG_HOME, "llama.cpp", "models.ini")
 MODELS_TOML = os.path.join(SCRIPT_DIR, "models.toml")
 
-BENCH_PP = 2048
-BENCH_TG = 512
+BENCH_PP = 1024
+BENCH_TG = 128
+
+PP_COL = f"pp{BENCH_PP}_tps"
+PP_STDDEV_COL = f"pp{BENCH_PP}_stddev_tps"
+TG_COL = f"tg{BENCH_TG}_tps"
+TG_STDDEV_COL = f"tg{BENCH_TG}_stddev_tps"
+VPP_COL = f"vpp{BENCH_PP}_tps"
+VPP_STDDEV_COL = f"vpp{BENCH_PP}_stddev_tps"
+VTG_COL = f"vtg{BENCH_TG}_tps"
+VTG_STDDEV_COL = f"vtg{BENCH_TG}_stddev_tps"
 
 PROVIDER_ORDER = {
     "unsloth": 0,
@@ -33,13 +42,21 @@ CSV_FIELDNAMES = [
     "mmproj",
     "ctx",
     "ngl",
+    "ubatch",
     "moe_cpu",
-    "pp2048_tps",
-    "tg512_tps",
+    PP_COL,
+    PP_STDDEV_COL,
+    TG_COL,
+    TG_STDDEV_COL,
+    "reps",
     "vctx",
     "vngl",
-    "vpp2048_tps",
-    "vtg512_tps",
+    "vubatch",
+    VPP_COL,
+    VPP_STDDEV_COL,
+    VTG_COL,
+    VTG_STDDEV_COL,
+    "vreps",
     "vision",
     "reason",
     "switch",
@@ -47,7 +64,16 @@ CSV_FIELDNAMES = [
 ]
 
 KNOWN_RESULT_COLS = set(CSV_FIELDNAMES)
-VISION_RESULT_COLS = ("vctx", "vngl", "vpp2048_tps", "vtg512_tps")
+VISION_RESULT_COLS = (
+    "vctx",
+    "vngl",
+    "vubatch",
+    VPP_COL,
+    VPP_STDDEV_COL,
+    VTG_COL,
+    VTG_STDDEV_COL,
+    "vreps",
+)
 
 
 def load_models():
@@ -239,9 +265,36 @@ def append_result_row(row_dict):
             ],
         )
         if incoming_has_vision:
-            _merge_nonempty_fields(merged, row_dict, ["vctx", "vngl", "vpp2048_tps", "vtg512_tps"])
+            _merge_nonempty_fields(
+                merged,
+                row_dict,
+                [
+                    "vctx",
+                    "vngl",
+                    "vubatch",
+                    VPP_COL,
+                    VPP_STDDEV_COL,
+                    VTG_COL,
+                    VTG_STDDEV_COL,
+                    "vreps",
+                ],
+            )
         else:
-            _merge_nonempty_fields(merged, row_dict, ["ctx", "ngl", "moe_cpu", "pp2048_tps", "tg512_tps"])
+            _merge_nonempty_fields(
+                merged,
+                row_dict,
+                [
+                    "ctx",
+                    "ngl",
+                    "ubatch",
+                    "moe_cpu",
+                    PP_COL,
+                    PP_STDDEV_COL,
+                    TG_COL,
+                    TG_STDDEV_COL,
+                    "reps",
+                ],
+            )
             if not _has_vision_data(merged):
                 _merge_nonempty_fields(merged, row_dict, VISION_RESULT_COLS)
         for col, value in row_dict.items():

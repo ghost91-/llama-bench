@@ -18,5 +18,6 @@ Model list: `models.toml` is the single source of truth for all target models (r
 - `ngl == -1` means "all layers on GPU" (llama.cpp convention, displayed as `all`)
 - MoE models: `llama-fit-params` can produce non-monotonic ngl — scan must run to completion
 - `fit-bench-results.csv` rows merge in-place: vision cols update independently from text cols
+- CSV may contain rows for models no longer in `models.toml` (e.g. Nemotron-3-Super-120B-A12B) — these are kept as historical data, not orphans
 - Sort order for results defined in `results.py:QUANT_ORDER` and `PROVIDER_ORDER`
 - Ruff line-length 99, Python >=3.11

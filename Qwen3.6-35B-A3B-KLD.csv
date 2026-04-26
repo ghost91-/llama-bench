@@ -11,6 +11,7 @@ Qwen3.6-35B-A3B,UD-Q3_K_XL,unsloth,0.0424
 Qwen3.6-35B-A3B,UD-IQ4_XS,unsloth,0.033
 Qwen3.6-35B-A3B,UD-IQ4_NL,unsloth,0.0328
 Qwen3.6-35B-A3B,UD-Q4_K_S,unsloth,0.0154
+Qwen3.6-35B-A3B,MXFP4,unsloth,0.0231
 Qwen3.6-35B-A3B,UD-Q4_K_M,unsloth,0.0125
 Qwen3.6-35B-A3B,UD-Q4_K_XL,unsloth,0.0118
 Qwen3.6-35B-A3B,UD-Q5_K_S,unsloth,0.00768

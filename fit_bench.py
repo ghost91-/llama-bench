@@ -29,20 +29,31 @@ from gguf_utils import detect_capabilities, get_max_ctx_from_gguf, get_mmproj_si
 from results import (
     BENCH_PP,
     BENCH_TG,
+    PP_COL,
+    PP_STDDEV_COL,
     RESULTS_FILE,
+    TG_COL,
+    TG_STDDEV_COL,
+    VPP_COL,
+    VPP_STDDEV_COL,
+    VTG_COL,
+    VTG_STDDEV_COL,
     append_result_row,
     display_name_from_tag,
     format_ctx,
     format_mmproj,
     format_ngl,
     format_params,
-    load_tags,
+    load_models,
     sort_results_file,
 )
 
 FIT_TARGET = 512
 FLASH_ATTN = 1
-REPS = 3
+REPS = 5
+BENCH_BATCH = 2048
+FIT_UBATCH_DENSE = 512
+FIT_UBATCH_MOE = 1024
 FIT_PARAMS_TIMEOUT = 600
 BENCH_TIMEOUT = 900
 
@@ -64,7 +75,7 @@ def set_log_file(path):
         open(path, "w").close()
 
 
-def get_fit_params(tag, target_ctx, fit_target=None):
+def get_fit_params(tag, target_ctx, fit_target=None, ubatch=FIT_UBATCH_DENSE):
     if fit_target is None:
         fit_target = FIT_TARGET
     try:
@@ -77,6 +88,8 @@ def get_fit_params(tag, target_ctx, fit_target=None):
                 str(target_ctx),
                 "--fit-target",
                 str(fit_target),
+                "-ub",
+                str(ubatch),
                 "-fa",
                 str(FLASH_ATTN),
             ],
@@ -306,25 +319,140 @@ def ot_label(ot):
     return f"yes({n})"
 
 
-def scan_fit_configs(tag, ctx_targets, fit_target=None):
+def parse_bench_row(output, target_prompt, target_gen, target_depth):
+    reader = csv.DictReader(io.StringIO(output))
+    size_bytes = ""
+    n_params = ""
+    model_name = ""
+    for row in reader:
+        if not size_bytes:
+            size_bytes = row.get("model_size", "").strip('"')
+        if not model_name:
+            model_name = row.get("model_type", "").strip('"')
+        if not n_params:
+            n_params = row.get("model_n_params", "").strip('"')
+        if (
+            row.get("n_prompt", "").strip('"') == str(target_prompt)
+            and row.get("n_gen", "").strip('"') == str(target_gen)
+            and row.get("n_depth", "").strip('"') == str(target_depth)
+        ):
+            return {
+                "model_name": model_name,
+                "size_bytes": size_bytes,
+                "n_params": n_params,
+                "speed": row.get("avg_ts", "").strip('"'),
+                "stddev": row.get("stddev_ts", "").strip('"'),
+            }
+    return None
+
+
+def scan_fit_configs(tag, ctx_targets, fit_target=None, ubatch=FIT_UBATCH_DENSE):
     results = []
     total = len(ctx_targets)
     for i, target_ctx in enumerate(ctx_targets, start=1):
-        log(f"fit scan {i}/{total}: target ctx={format_ctx(target_ctx)}")
-        params_str = get_fit_params(tag, target_ctx, fit_target=fit_target)
+        log(f"fit scan {i}/{total}: target ctx={format_ctx(target_ctx)} ub={ubatch}")
+        params_str = get_fit_params(tag, target_ctx, fit_target=fit_target, ubatch=ubatch)
         if not params_str:
             log("fit-params failed")
             results.append(
-                {"target_ctx": target_ctx, "ctx": None, "ngl": None, "ot_raw": None, "ot": None}
+                {
+                    "target_ctx": target_ctx,
+                    "ctx": None,
+                    "ngl": None,
+                    "ubatch": ubatch,
+                    "ot_raw": None,
+                    "ot": None,
+                }
             )
             continue
 
         ctx, ngl, ot = parse_fit_params(params_str)
         log(f"fit result: ctx={format_ctx(ctx)} ngl={format_ngl(ngl)} moe={ot_label(ot)}")
         results.append(
-            {"target_ctx": target_ctx, "ctx": ctx, "ngl": ngl, "ot_raw": ot, "ot": ot_label(ot)}
+            {
+                "target_ctx": target_ctx,
+                "ctx": ctx,
+                "ngl": ngl,
+                "ubatch": ubatch,
+                "ot_raw": ot,
+                "ot": ot_label(ot),
+            }
         )
     return results
+
+
+def ngl_rank(ngl):
+    if ngl is None:
+        return -1
+    if ngl == -1:
+        return 10**9
+    return ngl
+
+
+def prefer_result(left, right):
+    if left is None:
+        return right
+    if right is None:
+        return left
+    left_key = (ngl_rank(left["ngl"]), left.get("ubatch", 0), left["ctx"] or 0)
+    right_key = (ngl_rank(right["ngl"]), right.get("ubatch", 0), right["ctx"] or 0)
+    return left if left_key >= right_key else right
+
+
+def _scan_with_refinement(tag, ctx_targets, fit_target, max_ctx, ubatch):
+    results = scan_fit_configs(tag, ctx_targets, fit_target=fit_target, ubatch=ubatch)
+    chosen, reason, is_moe = select_best_result(results)
+    refinement_targets = build_refinement_ctx_list(results, chosen, max_ctx, is_moe)
+    if refinement_targets:
+        log()
+        log(f"Refinement contexts: {', '.join(format_ctx(c) for c in refinement_targets)}")
+        extra_results = scan_fit_configs(
+            tag, refinement_targets, fit_target=fit_target, ubatch=ubatch
+        )
+        results = merge_scan_results(results, extra_results)
+        chosen, reason, is_moe = select_best_result(results)
+    return results, chosen, reason, is_moe
+
+
+def choose_scan_strategy(tag, ctx_targets, fit_target, max_ctx, forced_ubatch=None):
+    if forced_ubatch is not None:
+        return _scan_with_refinement(tag, ctx_targets, fit_target, max_ctx, forced_ubatch)
+
+    probe_ctx = ctx_targets[0]
+    probe_params = get_fit_params(
+        tag, probe_ctx, fit_target=fit_target, ubatch=FIT_UBATCH_DENSE
+    )
+    probe_ngl = None
+    is_probe_moe = False
+    if probe_params:
+        _, probe_ngl, probe_ot = parse_fit_params(probe_params)
+        is_probe_moe = probe_ot is not None
+        log(
+            f"reference probe: ctx={format_ctx(probe_ctx)} ub={FIT_UBATCH_DENSE} ngl={format_ngl(probe_ngl)} moe={ot_label(probe_ot)}"
+        )
+
+    if not is_probe_moe:
+        log(f"Dense model: using fixed ub={FIT_UBATCH_DENSE}")
+        return _scan_with_refinement(tag, ctx_targets, fit_target, max_ctx, FIT_UBATCH_DENSE)
+
+    log(f"MoE model: trying preferred ub={FIT_UBATCH_MOE}")
+    preferred_results, chosen_preferred, reason_preferred, is_moe = _scan_with_refinement(
+        tag, ctx_targets, fit_target, max_ctx, FIT_UBATCH_MOE
+    )
+
+    if chosen_preferred and probe_ngl is not None and chosen_preferred["ngl"] == probe_ngl:
+        return preferred_results, chosen_preferred, reason_preferred, is_moe
+
+    log()
+    log(f"preferred ub={FIT_UBATCH_MOE} did not preserve max ngl; retrying with ub={FIT_UBATCH_DENSE}")
+    fallback_results, chosen_fallback, reason_fallback, is_moe = _scan_with_refinement(
+        tag, ctx_targets, fit_target, max_ctx, FIT_UBATCH_DENSE
+    )
+
+    chosen = prefer_result(chosen_preferred, chosen_fallback)
+    if chosen is chosen_preferred:
+        return preferred_results, chosen_preferred, reason_preferred, is_moe
+    return fallback_results, chosen_fallback, reason_fallback, is_moe
 
 
 def select_best_result(results):
@@ -355,10 +483,12 @@ def select_best_result(results):
     )
 
 
-def run_bench(tag, ngl, ot, reps=REPS):
+def run_bench(tag, ngl, ot, ubatch, reps=REPS):
     ngl_arg = 99 if ngl == -1 else ngl
-    log(f"starting llama-bench for {tag} with ngl={format_ngl(ngl)} reps={reps}")
-    cmd = [
+    log(
+        f"starting llama-bench for {tag} with ngl={format_ngl(ngl)} ub={ubatch} reps={reps}"
+    )
+    base_cmd = [
         "llama-bench",
         "-hf",
         tag,
@@ -366,60 +496,37 @@ def run_bench(tag, ngl, ot, reps=REPS):
         str(FLASH_ATTN),
         "-ngl",
         str(ngl_arg),
-        "-pg",
-        f"{BENCH_PP},{BENCH_TG}",
+        "-b",
+        str(BENCH_BATCH),
+        "-ub",
+        str(ubatch),
         "-o",
         "csv",
         "-r",
         str(reps),
     ]
     if ot:
-        cmd += ot_to_bench_arg(ot)
+        base_cmd += ot_to_bench_arg(ot)
 
-    r = subprocess.run(cmd, capture_output=True, text=True, timeout=BENCH_TIMEOUT)
-    if r.returncode != 0 and not r.stdout.strip():
+    cmd = base_cmd + ["-p", str(BENCH_PP), "-n", str(BENCH_TG), "-d", "0"]
+
+    run = subprocess.run(cmd, capture_output=True, text=True, timeout=BENCH_TIMEOUT)
+    if run.returncode != 0 and not run.stdout.strip():
         return None
 
-    reader = csv.reader(io.StringIO(r.stdout))
-    header = next(reader, None)
-    if not header:
-        return None
-
-    n_gen_idx = header.index("n_gen") if "n_gen" in header else -1
-    avg_ts_idx = header.index("avg_ts") if "avg_ts" in header else -1
-    model_size_idx = header.index("model_size") if "model_size" in header else -1
-    model_type_idx = header.index("model_type") if "model_type" in header else -1
-    n_params_idx = header.index("model_n_params") if "model_n_params" in header else -1
-
-    size_bytes = n_params = model_name = ""
-    pp_speed = tg_speed = None
-
-    for row in reader:
-        if len(row) <= max(n_gen_idx, avg_ts_idx, model_size_idx):
-            continue
-        if model_size_idx >= 0 and not size_bytes:
-            size_bytes = row[model_size_idx].strip('"')
-        if model_type_idx >= 0 and not model_name:
-            model_name = row[model_type_idx].strip('"')
-        if n_params_idx >= 0 and not n_params:
-            n_params = row[n_params_idx].strip('"')
-        if n_gen_idx >= 0 and avg_ts_idx >= 0:
-            n_gen = row[n_gen_idx].strip('"')
-            ts = row[avg_ts_idx].strip('"')
-            if n_gen == "0" and pp_speed is None:
-                pp_speed = ts
-            elif n_gen != "0" and tg_speed is None:
-                tg_speed = ts
-
-    if pp_speed is None and tg_speed is None:
+    pp_result = parse_bench_row(run.stdout, BENCH_PP, 0, 0)
+    tg_result = parse_bench_row(run.stdout, 0, BENCH_TG, 0)
+    if pp_result is None or tg_result is None:
         return None
 
     return {
-        "model_name": model_name,
-        "size_bytes": size_bytes,
-        "n_params": n_params,
-        "pp_speed": pp_speed,
-        "tg_speed": tg_speed,
+        "model_name": pp_result["model_name"] or tg_result["model_name"],
+        "size_bytes": pp_result["size_bytes"] or tg_result["size_bytes"],
+        "n_params": pp_result["n_params"] or tg_result["n_params"],
+        "pp_speed": pp_result["speed"],
+        "pp_stddev": pp_result["stddev"],
+        "tg_speed": tg_result["speed"],
+        "tg_stddev": tg_result["stddev"],
     }
 
 
@@ -453,11 +560,12 @@ def print_scan_table(scan_results, chosen):
                 format_ctx(r["target_ctx"]),
                 format_ctx(r["ctx"]),
                 format_ngl(r["ngl"]),
+                r.get("ubatch", "?"),
                 r["ot"] if r["ot"] else "?",
                 selected,
             ]
         )
-    print_markdown_table(["Target Ctx", "Actual Ctx", "ngl", "MoE CPU", "Selected"], rows)
+    print_markdown_table(["Target Ctx", "Actual Ctx", "ngl", "ub", "MoE CPU", "Selected"], rows)
 
 
 def print_summary(display_name, quant, provider, size_gib, chosen, is_moe, bench_result):
@@ -471,6 +579,7 @@ def print_summary(display_name, quant, provider, size_gib, chosen, is_moe, bench
         "Target Ctx",
         "Actual Ctx",
         "ngl",
+        "ub",
         "MoE CPU",
         f"pp{BENCH_PP} (t/s)",
         f"tg{BENCH_TG} (t/s)",
@@ -494,6 +603,7 @@ def print_summary(display_name, quant, provider, size_gib, chosen, is_moe, bench
                 format_ctx(chosen["target_ctx"]),
                 format_ctx(chosen["ctx"]),
                 format_ngl(chosen["ngl"]),
+                chosen.get("ubatch", "?"),
                 chosen["ot"],
                 pp_f,
                 tg_f,
@@ -502,7 +612,7 @@ def print_summary(display_name, quant, provider, size_gib, chosen, is_moe, bench
     print_markdown_table(headers, rows)
 
 
-def write_result_row(tag, chosen, is_moe, bench_result, caps, vision_mode):
+def write_result_row(tag, chosen, is_moe, bench_result, caps, vision_mode, reps):
     display_name = display_name_from_tag(tag)
     repo = tag.split(":")[0] if ":" in tag else tag
     provider = repo.split("/")[0] if "/" in repo else repo
@@ -522,14 +632,25 @@ def write_result_row(tag, chosen, is_moe, bench_result, caps, vision_mode):
         if bench_result and bench_result.get("pp_speed")
         else ""
     )
+    pp_stddev_f = (
+        f"{float(bench_result['pp_stddev']):.1f}"
+        if bench_result and bench_result.get("pp_stddev")
+        else ""
+    )
     tg_f = (
         f"{float(bench_result['tg_speed']):.1f}"
         if bench_result and bench_result.get("tg_speed")
         else ""
     )
+    tg_stddev_f = (
+        f"{float(bench_result['tg_stddev']):.1f}"
+        if bench_result and bench_result.get("tg_stddev")
+        else ""
+    )
     ctx_val = format_ctx(chosen["ctx"])
     ngl_val = format_ngl(chosen["ngl"])
     moe_val = chosen["ot"]
+    ubatch_val = str(chosen.get("ubatch", "")) if chosen.get("ubatch") is not None else ""
 
     row = {
         "model": display_name,
@@ -548,23 +669,39 @@ def write_result_row(tag, chosen, is_moe, bench_result, caps, vision_mode):
     if vision_mode:
         row["vctx"] = ctx_val
         row["vngl"] = ngl_val
-        row["vpp2048_tps"] = pp_f
-        row["vtg512_tps"] = tg_f
+        row["vubatch"] = ubatch_val
+        row[VPP_COL] = pp_f
+        row[VPP_STDDEV_COL] = pp_stddev_f
+        row[VTG_COL] = tg_f
+        row[VTG_STDDEV_COL] = tg_stddev_f
+        row["vreps"] = str(reps)
         row["ctx"] = ""
         row["ngl"] = ""
+        row["ubatch"] = ""
         row["moe_cpu"] = ""
-        row["pp2048_tps"] = ""
-        row["tg512_tps"] = ""
+        row[PP_COL] = ""
+        row[PP_STDDEV_COL] = ""
+        row[TG_COL] = ""
+        row[TG_STDDEV_COL] = ""
+        row["reps"] = ""
     else:
         row["ctx"] = ctx_val
         row["ngl"] = ngl_val
+        row["ubatch"] = ubatch_val
         row["moe_cpu"] = moe_val
-        row["pp2048_tps"] = pp_f
-        row["tg512_tps"] = tg_f
+        row[PP_COL] = pp_f
+        row[PP_STDDEV_COL] = pp_stddev_f
+        row[TG_COL] = tg_f
+        row[TG_STDDEV_COL] = tg_stddev_f
+        row["reps"] = str(reps)
         row["vctx"] = ""
         row["vngl"] = ""
-        row["vpp2048_tps"] = ""
-        row["vtg512_tps"] = ""
+        row["vubatch"] = ""
+        row[VPP_COL] = ""
+        row[VPP_STDDEV_COL] = ""
+        row[VTG_COL] = ""
+        row[VTG_STDDEV_COL] = ""
+        row["vreps"] = ""
 
     append_result_row(row)
     sort_results_file()
@@ -600,16 +737,13 @@ def benchmark_tag(tag, args):
     log(f"Candidate contexts: {', '.join(format_ctx(c) for c in ctx_targets)}")
     log()
 
-    scan_results = scan_fit_configs(tag, ctx_targets, fit_target=fit_target)
-    chosen, reason, is_moe = select_best_result(scan_results)
-
-    refinement_targets = build_refinement_ctx_list(scan_results, chosen, max_ctx, is_moe)
-    if refinement_targets:
-        log()
-        log(f"Refinement contexts: {', '.join(format_ctx(c) for c in refinement_targets)}")
-        extra_results = scan_fit_configs(tag, refinement_targets, fit_target=fit_target)
-        scan_results = merge_scan_results(scan_results, extra_results)
-        chosen, reason, is_moe = select_best_result(scan_results)
+    scan_results, chosen, reason, is_moe = choose_scan_strategy(
+        tag,
+        ctx_targets,
+        fit_target,
+        max_ctx,
+        forced_ubatch=args.ubatch,
+    )
 
     print_scan_table(scan_results, chosen)
 
@@ -617,7 +751,7 @@ def benchmark_tag(tag, args):
     log(f"Selection: {reason}")
     if chosen:
         log(
-            f"Chosen context: {format_ctx(chosen['ctx'])} (target {format_ctx(chosen['target_ctx'])}, ngl {format_ngl(chosen['ngl'])})"
+            f"Chosen context: {format_ctx(chosen['ctx'])} (target {format_ctx(chosen['target_ctx'])}, ngl {format_ngl(chosen['ngl'])}, ub {chosen.get('ubatch', '?')})"
         )
 
     size_gib = "?"
@@ -628,16 +762,30 @@ def benchmark_tag(tag, args):
     else:
         log()
         log("Benchmark:")
-        log(f"ctx={format_ctx(chosen['ctx'])} ngl={format_ngl(chosen['ngl'])} ot={chosen['ot']}")
+        log(
+            f"ctx={format_ctx(chosen['ctx'])} ngl={format_ngl(chosen['ngl'])} ub={chosen.get('ubatch', '?')} ot={chosen['ot']}"
+        )
         bench_start = time.monotonic()
-        bench_result = run_bench(tag, chosen["ngl"], chosen["ot_raw"], reps=args.reps)
+        bench_result = run_bench(
+            tag,
+            chosen["ngl"],
+            chosen["ot_raw"],
+            chosen.get("ubatch", FIT_UBATCH_DENSE) if args.ubatch is None else args.ubatch,
+            reps=args.reps,
+        )
         if bench_result is None:
             log("benchmark failed")
         else:
             pp_f = f"{float(bench_result['pp_speed']):.1f}" if bench_result["pp_speed"] else "?"
+            pp_stddev_f = (
+                f"{float(bench_result['pp_stddev']):.1f}" if bench_result["pp_stddev"] else "?"
+            )
             tg_f = f"{float(bench_result['tg_speed']):.1f}" if bench_result["tg_speed"] else "?"
+            tg_stddev_f = (
+                f"{float(bench_result['tg_stddev']):.1f}" if bench_result["tg_stddev"] else "?"
+            )
             log(
-                f"benchmark complete in {time.monotonic() - bench_start:.1f}s: pp{BENCH_PP}={pp_f} tg{BENCH_TG}={tg_f}"
+                f"benchmark complete in {time.monotonic() - bench_start:.1f}s: pp{BENCH_PP}={pp_f}±{pp_stddev_f} tg{BENCH_TG}={tg_f}±{tg_stddev_f}"
             )
             if bench_result["size_bytes"]:
                 size_gib = f"{int(bench_result['size_bytes']) / 1024**3:.2f}"
@@ -651,7 +799,7 @@ def benchmark_tag(tag, args):
         log(
             f"Capabilities: vision={caps['vision']} reasoning={caps['reasoning']} switchable={caps['switchable']} effort={caps['effort']}"
         )
-        write_result_row(tag, chosen, is_moe, bench_result, caps, vision_mode=args.vision)
+        write_result_row(tag, chosen, is_moe, bench_result, caps, vision_mode=args.vision, reps=args.reps)
 
     log(f"Finished model in {time.monotonic() - start_time:.1f}s")
 
@@ -662,22 +810,43 @@ def main():
     parser.add_argument(
         "--all", action="store_true", help="Run sequentially for all tags from models.toml"
     )
-    parser.add_argument("--reps", type=int, default=REPS, help="Repetitions per test")
+    parser.add_argument("-r", "--reps", type=int, default=REPS, help="Repetitions per test")
     parser.add_argument(
         "--list", action="store_true", help="Only list fit params, don't benchmark"
     )
     parser.add_argument(
         "--vision", action="store_true", help="Benchmark with mmproj VRAM budget (vision mode)"
     )
+    parser.add_argument("-p", "--provider", action="append", help="Only benchmark models from this provider (e.g. unsloth)")
+    parser.add_argument("-g", "--group", action="append", help="Only benchmark models in this group (e.g. qwen3.6-35b-a3b)")
+    parser.add_argument("-ub", "--ubatch", type=int, default=None, help="Force ubatch value (e.g. 512 or 1024)")
     parser.add_argument("--log-file", help="Write timestamped progress logs to this file")
     args = parser.parse_args()
 
     set_log_file(args.log_file)
 
+    if args.all and args.tags:
+        parser.error("cannot use --all with explicit tags")
     if args.all:
-        tags = load_tags()
-    else:
+        tags = [f"{repo}:{quant}" for repo, quant, _ in load_models()]
+    elif args.tags:
         tags = args.tags
+    elif args.provider or args.group:
+        models = load_models()
+        if args.provider:
+            models = [m for m in models if m[0].split("/")[0] in args.provider]
+        if args.group:
+            models = [m for m in models if m[2] in args.group]
+        tags = [f"{repo}:{quant}" for repo, quant, _ in models]
+    else:
+        tags = []
+
+    if args.provider:
+        tags = [t for t in tags if t.split("/")[0].split(":")[0] in args.provider]
+    if args.group:
+        all_models = load_models()
+        group_repos = {m[0] for m in all_models if m[2] in args.group}
+        tags = [t for t in tags if t.split(":")[0] in group_repos]
 
     if not tags:
         parser.error("provide at least one tag or use --all")

@@ -28,6 +28,12 @@ def parse_ngl(val):
     return int(val)
 
 
+def parse_ubatch(val):
+    if not val or val == "-":
+        return None
+    return int(val)
+
+
 def parse_results_table(filepath):
     results = {}
     if not os.path.exists(filepath):
@@ -42,19 +48,23 @@ def parse_results_table(filepath):
             entry = {
                 "actual_ctx": parse_ctx(row["ctx"]),
                 "ngl": parse_ngl(row["ngl"]),
+                "ubatch": parse_ubatch(row.get("ubatch", "")),
                 "vision": row["vision"].strip().lower() == "yes",
                 "mmproj": row["mmproj"],
                 "vision_ctx": parse_ctx(row["vctx"]),
                 "vision_ngl": parse_ngl(row["vngl"]),
+                "vision_ubatch": parse_ubatch(row.get("vubatch", "")),
             }
             results[key] = entry
     return results
 
 
-def sampler_summary(group):
+def sampler_summary(group, skip_keys=None):
     cfg = SAMPLER_CONFIG.get(group, {})
     parts = []
     for k, v in cfg.items():
+        if skip_keys and k in skip_keys:
+            continue
         if k == "chat-template-kwargs":
             try:
                 ctk = json.loads(v)
@@ -69,10 +79,12 @@ def sampler_summary(group):
     return ", ".join(parts)
 
 
-def format_sampler_settings(group):
+def format_sampler_settings(group, skip_keys=None):
     cfg = SAMPLER_CONFIG.get(group, {})
     props = []
     for k, v in cfg.items():
+        if skip_keys and k in skip_keys:
+            continue
         props.append((k, v))
     return props
 
@@ -91,41 +103,53 @@ def generate_ini(models, results, output, dry_run):
         if not entry:
             print(f"WARNING: {full_tag} has no benchmark results, skipping", file=sys.stderr)
             continue
-        if group != current_group:
-            current_group = group
-            desc = FAMILY_DESCRIPTIONS.get(group, group)
-            summary = sampler_summary(group)
-            sections.append({"type": "comment", "text": f"; {desc} — {summary}"})
         is_vision_capable = entry["vision"]
         text_ctx = entry["actual_ctx"]
         text_ngl = entry["ngl"]
+        text_ubatch = entry["ubatch"]
         vision_ctx = entry["vision_ctx"]
         vision_ngl = entry["vision_ngl"]
+        vision_ubatch = entry["vision_ubatch"]
+        skip_keys = {"ubatch-size"} if text_ubatch is not None or vision_ubatch is not None else None
+        if group != current_group:
+            current_group = group
+            desc = FAMILY_DESCRIPTIONS.get(group, group)
+            summary = sampler_summary(group, skip_keys=skip_keys)
+            sections.append({"type": "comment", "text": f"; {desc} — {summary}"})
         need_vision_section = is_vision_capable and (
-            vision_ctx is not None and (vision_ctx != text_ctx or vision_ngl != text_ngl)
+            vision_ctx is not None
+            and (
+                vision_ctx != text_ctx
+                or vision_ngl != text_ngl
+                or vision_ubatch != text_ubatch
+            )
         )
         mmproj_mib = get_mmproj_size_mib(full_tag) if is_vision_capable else 0
         text_props = []
         text_props.append(("hf", full_tag))
         if text_ctx is not None:
             text_props.append(("ctx-size", str(text_ctx)))
+        if text_ubatch is not None:
+            text_props.append(("ubatch-size", str(text_ubatch)))
         if is_vision_capable and not need_vision_section:
             text_props.append(("mmproj-auto", "on"))
             text_props.append(("mmproj-offload", "on"))
             if mmproj_mib > 0:
                 text_props.append(("fit-target", str(512 + mmproj_mib)))
-        text_props.extend(format_sampler_settings(group))
+        text_props.extend(format_sampler_settings(group, skip_keys=skip_keys))
         sections.append({"type": "section", "name": full_tag, "props": text_props})
         if need_vision_section:
             vision_props = []
             vision_props.append(("hf", full_tag))
             if vision_ctx is not None:
                 vision_props.append(("ctx-size", str(vision_ctx)))
+            if vision_ubatch is not None:
+                vision_props.append(("ubatch-size", str(vision_ubatch)))
             vision_props.append(("mmproj-auto", "on"))
             vision_props.append(("mmproj-offload", "on"))
             if mmproj_mib > 0:
                 vision_props.append(("fit-target", str(512 + mmproj_mib)))
-            vision_props.extend(format_sampler_settings(group))
+            vision_props.extend(format_sampler_settings(group, skip_keys=skip_keys))
             sections.append(
                 {"type": "section", "name": f"{full_tag}:vision", "props": vision_props}
             )
