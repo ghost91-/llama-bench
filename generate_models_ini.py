@@ -7,7 +7,6 @@ import sys
 
 from gguf_utils import (
     find_local_gguf_path,
-    get_mmproj_size_mib,
 )
 from sampler_config import FAMILY_DESCRIPTIONS, SAMPLER_CONFIG
 from results import (
@@ -17,7 +16,6 @@ from results import (
     load_models,
     parse_ctx,
 )
-
 
 def parse_ngl(val):
     if not val or val == "-":
@@ -47,10 +45,12 @@ def parse_results_table(filepath):
             key = (display_name, quant, provider)
             entry = {
                 "actual_ctx": parse_ctx(row["ctx"]),
+                "fit_target": parse_ubatch(row.get("fit_target", "")),
                 "ngl": parse_ngl(row["ngl"]),
                 "ubatch": parse_ubatch(row.get("ubatch", "")),
                 "vision": row["vision"].strip().lower() == "yes",
                 "mmproj": row["mmproj"],
+                "vision_fit_target": parse_ubatch(row.get("vfit_target", "")),
                 "vision_ctx": parse_ctx(row["vctx"]),
                 "vision_ngl": parse_ngl(row["vngl"]),
                 "vision_ubatch": parse_ubatch(row.get("vubatch", "")),
@@ -88,7 +88,6 @@ def format_sampler_settings(group, skip_keys=None):
         props.append((k, v))
     return props
 
-
 def generate_ini(models, results, output, dry_run):
     sections = []
     current_group = None
@@ -105,8 +104,10 @@ def generate_ini(models, results, output, dry_run):
             continue
         is_vision_capable = entry["vision"]
         text_ctx = entry["actual_ctx"]
+        text_fit_target = entry["fit_target"]
         text_ngl = entry["ngl"]
         text_ubatch = entry["ubatch"]
+        vision_fit_target = entry["vision_fit_target"]
         vision_ctx = entry["vision_ctx"]
         vision_ngl = entry["vision_ngl"]
         vision_ubatch = entry["vision_ubatch"]
@@ -124,18 +125,19 @@ def generate_ini(models, results, output, dry_run):
                 or vision_ubatch != text_ubatch
             )
         )
-        mmproj_mib = get_mmproj_size_mib(full_tag) if is_vision_capable else 0
         text_props = []
         text_props.append(("hf", full_tag))
         if text_ctx is not None:
             text_props.append(("ctx-size", str(text_ctx)))
+        if text_fit_target is not None and not (is_vision_capable and not need_vision_section):
+            text_props.append(("fit-target", str(text_fit_target)))
         if text_ubatch is not None:
             text_props.append(("ubatch-size", str(text_ubatch)))
         if is_vision_capable and not need_vision_section:
             text_props.append(("mmproj-auto", "on"))
             text_props.append(("mmproj-offload", "on"))
-            if mmproj_mib > 0:
-                text_props.append(("fit-target", str(512 + mmproj_mib)))
+            if vision_fit_target is not None:
+                text_props.append(("fit-target", str(vision_fit_target)))
         text_props.extend(format_sampler_settings(group, skip_keys=skip_keys))
         sections.append({"type": "section", "name": full_tag, "props": text_props})
         if need_vision_section:
@@ -143,12 +145,12 @@ def generate_ini(models, results, output, dry_run):
             vision_props.append(("hf", full_tag))
             if vision_ctx is not None:
                 vision_props.append(("ctx-size", str(vision_ctx)))
+            if vision_fit_target is not None:
+                vision_props.append(("fit-target", str(vision_fit_target)))
             if vision_ubatch is not None:
                 vision_props.append(("ubatch-size", str(vision_ubatch)))
             vision_props.append(("mmproj-auto", "on"))
             vision_props.append(("mmproj-offload", "on"))
-            if mmproj_mib > 0:
-                vision_props.append(("fit-target", str(512 + mmproj_mib)))
             vision_props.extend(format_sampler_settings(group, skip_keys=skip_keys))
             sections.append(
                 {"type": "section", "name": f"{full_tag}:vision", "props": vision_props}
@@ -159,7 +161,6 @@ def generate_ini(models, results, output, dry_run):
     lines.append("[*]")
     lines.append("fit = on")
     lines.append("fit-ctx = 5000")
-    lines.append("fit-target = 512")
     lines.append("flash-attn = on")
     lines.append("parallel = 1")
     for sec in sections:

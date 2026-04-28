@@ -10,6 +10,8 @@ Log files: Keep all `.log` files in the `logs/` directory.
 
 Setup: `uv sync` — requires `llama-fit-params`, `llama-bench`, `llama-server` on PATH.
 
+Local llama.cpp sources are available at `~/Development/other/llama.cpp`; use that tree first when checking upstream flags, behaviour, or implementation details.
+
 Model list: `models.toml` is the single source of truth for all target models (repo, quant, group).
 
 ## Gotchas

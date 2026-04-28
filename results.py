@@ -40,6 +40,7 @@ CSV_FIELDNAMES = [
     "params",
     "model_type",
     "mmproj",
+    "fit_target",
     "ctx",
     "ngl",
     "ubatch",
@@ -49,6 +50,7 @@ CSV_FIELDNAMES = [
     TG_COL,
     TG_STDDEV_COL,
     "reps",
+    "vfit_target",
     "vctx",
     "vngl",
     "vubatch",
@@ -65,6 +67,7 @@ CSV_FIELDNAMES = [
 
 KNOWN_RESULT_COLS = set(CSV_FIELDNAMES)
 VISION_RESULT_COLS = (
+    "vfit_target",
     "vctx",
     "vngl",
     "vubatch",
@@ -253,17 +256,17 @@ def append_result_row(row_dict):
         _merge_nonempty_fields(
             merged,
             row_dict,
-            [
-            "size_gib",
-            "params",
-            "model_type",
-            "mmproj",
-            "vision",
-            "reason",
-            "switch",
-            "effort",
-            ],
-        )
+                [
+                    "size_gib",
+                    "params",
+                    "model_type",
+                    "mmproj",
+                    "vision",
+                    "reason",
+                    "switch",
+                    "effort",
+                ],
+            )
         if incoming_has_vision:
             _merge_nonempty_fields(
                 merged,
@@ -284,6 +287,7 @@ def append_result_row(row_dict):
                 merged,
                 row_dict,
                 [
+                    "fit_target",
                     "ctx",
                     "ngl",
                     "ubatch",

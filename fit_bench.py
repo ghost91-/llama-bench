@@ -20,9 +20,12 @@ Usage:
 
 import argparse
 import csv
+import fcntl
 import io
+import os
 import re
 import subprocess
+import sys
 import time
 
 from gguf_utils import detect_capabilities, get_max_ctx_from_gguf, get_mmproj_size_mib
@@ -48,7 +51,7 @@ from results import (
     sort_results_file,
 )
 
-FIT_TARGET = 512
+FIT_TARGET = 128
 FLASH_ATTN = 1
 REPS = 5
 BENCH_BATCH = 2048
@@ -58,6 +61,7 @@ FIT_PARAMS_TIMEOUT = 600
 BENCH_TIMEOUT = 900
 
 _log_file = None
+_run_lock = None
 
 
 def log(message=""):
@@ -73,6 +77,27 @@ def set_log_file(path):
     _log_file = path
     if path:
         open(path, "w").close()
+
+
+def acquire_run_lock():
+    global _run_lock
+    runtime_dir = os.environ.get("XDG_RUNTIME_DIR")
+    if runtime_dir:
+        lock_dir = os.path.join(runtime_dir, "llama-bench")
+    else:
+        lock_dir = os.path.join("/tmp", f"llama-bench-{os.getuid()}")
+    os.makedirs(lock_dir, exist_ok=True)
+    lock_path = os.path.join(lock_dir, "fit_bench.lock")
+    lock_file = open(lock_path, "w")
+    try:
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        lock_file.close()
+        return False
+    lock_file.write(f"{os.getpid()}\n")
+    lock_file.flush()
+    _run_lock = lock_file
+    return True
 
 
 def get_fit_params(tag, target_ctx, fit_target=None, ubatch=FIT_UBATCH_DENSE):
@@ -110,7 +135,7 @@ def get_fit_params(tag, target_ctx, fit_target=None, ubatch=FIT_UBATCH_DENSE):
     return None
 
 
-def get_max_ctx(tag):
+def get_max_ctx(tag, fit_target=FIT_TARGET, prio=None):
     start = time.monotonic()
     log(f"resolving max context for {tag}")
     try:
@@ -132,7 +157,7 @@ def get_max_ctx(tag):
                 "-c",
                 "1",
                 "--fit-target",
-                str(FIT_TARGET),
+                str(fit_target),
                 "-fa",
                 str(FLASH_ATTN),
                 "-lv",
@@ -166,7 +191,7 @@ def get_max_ctx(tag):
                 "-r",
                 "1",
                 "-v",
-            ],
+            ] + (["--prio", str(prio)] if prio is not None else []),
             capture_output=True,
             text=True,
             timeout=BENCH_TIMEOUT,
@@ -230,6 +255,10 @@ def build_ctx_list(max_ctx):
     return steps
 
 
+def fit_target_mib(mmproj_mib=0):
+    return FIT_TARGET + mmproj_mib
+
+
 def parse_fit_params(params_str):
     parts = params_str.split()
     c = ngl = ot = None
@@ -253,17 +282,11 @@ def parse_fit_params(params_str):
     return c, ngl, ot
 
 
-def result_keeps_best_ngl(result, chosen, is_moe):
-    if result["ctx"] is None or result["ngl"] is None:
-        return False
-    if is_moe:
-        return result["ngl"] == chosen["ngl"]
-    if chosen["ngl"] == -1:
-        return result["ngl"] == -1
-    return result["ngl"] == chosen["ngl"]
+def result_matches_target(result, target_ngl):
+    return result["ctx"] is not None and result["ngl"] == target_ngl
 
 
-def build_refinement_ctx_list(results, chosen, max_ctx, is_moe):
+def build_refinement_ctx_list(results, chosen, max_ctx, target_ngl):
     if not chosen or not max_ctx or chosen["ctx"] is None or chosen["ctx"] >= max_ctx:
         return []
 
@@ -276,7 +299,7 @@ def build_refinement_ctx_list(results, chosen, max_ctx, is_moe):
     for result in valid:
         if result["ctx"] <= chosen["ctx"]:
             continue
-        if not result_keeps_best_ngl(result, chosen, is_moe):
+        if not result_matches_target(result, target_ngl):
             upper = result["ctx"]
             break
 
@@ -346,38 +369,61 @@ def parse_bench_row(output, target_prompt, target_gen, target_depth):
     return None
 
 
-def scan_fit_configs(tag, ctx_targets, fit_target=None, ubatch=FIT_UBATCH_DENSE):
-    results = []
+def build_fit_result(target_ctx, ubatch, params_str):
+    if not params_str:
+        return {
+            "target_ctx": target_ctx,
+            "ctx": None,
+            "ngl": None,
+            "ubatch": ubatch,
+            "ot_raw": None,
+            "ot": None,
+        }
+
+    ctx, ngl, ot = parse_fit_params(params_str)
+    return {
+        "target_ctx": target_ctx,
+        "ctx": ctx,
+        "ngl": ngl,
+        "ubatch": ubatch,
+        "ot_raw": ot,
+        "ot": ot_label(ot),
+    }
+
+
+def scan_fit_configs(
+    tag,
+    ctx_targets,
+    fit_target=None,
+    ubatch=FIT_UBATCH_DENSE,
+    stop_on_match=None,
+    existing_results=None,
+):
+    results = list(existing_results or [])
+    existing_by_ctx = {r["target_ctx"]: r for r in results}
     total = len(ctx_targets)
     for i, target_ctx in enumerate(ctx_targets, start=1):
+        if target_ctx in existing_by_ctx:
+            log(
+                f"fit scan {i}/{total}: target ctx={format_ctx(target_ctx)} ub={ubatch} (reusing probe)"
+            )
+            if stop_on_match and stop_on_match(existing_by_ctx[target_ctx]):
+                break
+            continue
         log(f"fit scan {i}/{total}: target ctx={format_ctx(target_ctx)} ub={ubatch}")
         params_str = get_fit_params(tag, target_ctx, fit_target=fit_target, ubatch=ubatch)
+        result = build_fit_result(target_ctx, ubatch, params_str)
         if not params_str:
             log("fit-params failed")
-            results.append(
-                {
-                    "target_ctx": target_ctx,
-                    "ctx": None,
-                    "ngl": None,
-                    "ubatch": ubatch,
-                    "ot_raw": None,
-                    "ot": None,
-                }
-            )
+            results.append(result)
             continue
 
-        ctx, ngl, ot = parse_fit_params(params_str)
-        log(f"fit result: ctx={format_ctx(ctx)} ngl={format_ngl(ngl)} moe={ot_label(ot)}")
-        results.append(
-            {
-                "target_ctx": target_ctx,
-                "ctx": ctx,
-                "ngl": ngl,
-                "ubatch": ubatch,
-                "ot_raw": ot,
-                "ot": ot_label(ot),
-            }
+        log(
+            f"fit result: ctx={format_ctx(result['ctx'])} ngl={format_ngl(result['ngl'])} moe={result['ot']}"
         )
+        results.append(result)
+        if stop_on_match and stop_on_match(result):
+            break
     return results
 
 
@@ -399,60 +445,171 @@ def prefer_result(left, right):
     return left if left_key >= right_key else right
 
 
-def _scan_with_refinement(tag, ctx_targets, fit_target, max_ctx, ubatch):
-    results = scan_fit_configs(tag, ctx_targets, fit_target=fit_target, ubatch=ubatch)
-    chosen, reason, is_moe = select_best_result(results)
-    refinement_targets = build_refinement_ctx_list(results, chosen, max_ctx, is_moe)
+def probe_fit_config(tag, target_ctx, fit_target, ubatch):
+    params_str = get_fit_params(tag, target_ctx, fit_target=fit_target, ubatch=ubatch)
+    if not params_str:
+        log(f"reference probe failed: ctx={format_ctx(target_ctx)} ub={ubatch}")
+        return None
+
+    result = build_fit_result(target_ctx, ubatch, params_str)
+    log(
+        f"reference probe: ctx={format_ctx(target_ctx)} ub={ubatch} ngl={format_ngl(result['ngl'])} moe={result['ot']}"
+    )
+    return result
+
+
+def result_below_target(result, target_ngl):
+    return result["ctx"] is not None and result["ngl"] is not None and result["ngl"] < target_ngl
+
+
+def choose_target_result(results, target_ngl, descending):
+    ordered = sorted(results, key=lambda r: r["target_ctx"], reverse=descending)
+    if descending:
+        return next((r for r in ordered if result_matches_target(r, target_ngl)), None)
+
+    chosen = None
+    for result in ordered:
+        if result_matches_target(result, target_ngl):
+            chosen = result
+        elif result_below_target(result, target_ngl):
+            break
+    return chosen
+
+
+def run_target_scan(
+    tag,
+    ctx_targets,
+    fit_target,
+    max_ctx,
+    ubatch,
+    target_ngl,
+    descending,
+    probe_result=None,
+):
+    stop_on_match = (
+        (lambda result: result_matches_target(result, target_ngl))
+        if descending
+        else (lambda result: result_below_target(result, target_ngl))
+    )
+    results = scan_fit_configs(
+        tag,
+        sorted(ctx_targets, reverse=descending),
+        fit_target=fit_target,
+        ubatch=ubatch,
+        stop_on_match=stop_on_match,
+        existing_results=[probe_result] if probe_result is not None else None,
+    )
+    chosen = choose_target_result(results, target_ngl, descending)
+
+    refinement_targets = build_refinement_ctx_list(results, chosen, max_ctx, target_ngl)
     if refinement_targets:
         log()
         log(f"Refinement contexts: {', '.join(format_ctx(c) for c in refinement_targets)}")
         extra_results = scan_fit_configs(
-            tag, refinement_targets, fit_target=fit_target, ubatch=ubatch
+            tag,
+            sorted(refinement_targets, reverse=descending),
+            fit_target=fit_target,
+            ubatch=ubatch,
+            stop_on_match=stop_on_match,
         )
         results = merge_scan_results(results, extra_results)
-        chosen, reason, is_moe = select_best_result(results)
+        chosen = choose_target_result(results, target_ngl, descending)
+    return results, chosen
+
+
+def reason_for_target_scan(chosen, target_ngl, is_moe):
+    if chosen and result_matches_target(chosen, target_ngl):
+        if is_moe:
+            return f"MoE: highest context that keeps max ngl ({format_ngl(target_ngl)})"
+        if target_ngl == -1:
+            return "Dense: highest context that still fits fully in VRAM"
+        return (
+            "Dense fallback: 5k probe does not fit fully in VRAM, "
+            f"using highest context at max ngl ({format_ngl(target_ngl)})"
+        )
+    return "No matching fit-params result"
+
+
+def fallback_scan_strategy(tag, ctx_targets, fit_target, ubatch):
+    results = scan_fit_configs(
+        tag, sorted(ctx_targets, reverse=True), fit_target=fit_target, ubatch=ubatch
+    )
+    chosen, reason, is_moe = select_best_result(results)
     return results, chosen, reason, is_moe
 
 
+def finalize_target_scan(results, chosen, target_ngl, is_moe):
+    if chosen is None:
+        chosen, reason, is_moe = select_best_result(results)
+        return results, chosen, reason, is_moe
+    return results, chosen, reason_for_target_scan(chosen, target_ngl, is_moe), is_moe
+
+
+def resolve_probe_strategy(probe_dense, probe_moe):
+    probes = [p for p in (probe_dense, probe_moe) if p is not None and p["ngl"] is not None]
+    if not probes:
+        return None
+
+    is_moe = any(p["ot_raw"] for p in probes)
+    if is_moe:
+        target_ngl = max(p["ngl"] for p in probes)
+    else:
+        target_ngl = -1 if any(p["ngl"] == -1 for p in probes) else max(p["ngl"] for p in probes)
+
+    selected_probe = next(
+        (p for p in (probe_moe, probe_dense) if p is not None and p["ngl"] == target_ngl),
+        prefer_result(probe_moe, probe_dense),
+    )
+    return selected_probe, target_ngl, is_moe
+
+
 def choose_scan_strategy(tag, ctx_targets, fit_target, max_ctx, forced_ubatch=None):
-    if forced_ubatch is not None:
-        return _scan_with_refinement(tag, ctx_targets, fit_target, max_ctx, forced_ubatch)
-
     probe_ctx = ctx_targets[0]
-    probe_params = get_fit_params(
-        tag, probe_ctx, fit_target=fit_target, ubatch=FIT_UBATCH_DENSE
-    )
-    probe_ngl = None
-    is_probe_moe = False
-    if probe_params:
-        _, probe_ngl, probe_ot = parse_fit_params(probe_params)
-        is_probe_moe = probe_ot is not None
-        log(
-            f"reference probe: ctx={format_ctx(probe_ctx)} ub={FIT_UBATCH_DENSE} ngl={format_ngl(probe_ngl)} moe={ot_label(probe_ot)}"
+    if forced_ubatch is not None:
+        probe = probe_fit_config(tag, probe_ctx, fit_target, forced_ubatch)
+        if probe is None or probe["ngl"] is None:
+            return fallback_scan_strategy(tag, ctx_targets, fit_target, forced_ubatch)
+
+        is_moe = bool(probe["ot_raw"])
+        target_ngl = probe["ngl"]
+        results, chosen = run_target_scan(
+            tag,
+            ctx_targets,
+            fit_target,
+            max_ctx,
+            forced_ubatch,
+            target_ngl,
+            descending=is_moe or target_ngl == -1,
+            probe_result=probe,
         )
+        return finalize_target_scan(results, chosen, target_ngl, is_moe)
 
-    if not is_probe_moe:
-        log(f"Dense model: using fixed ub={FIT_UBATCH_DENSE}")
-        return _scan_with_refinement(tag, ctx_targets, fit_target, max_ctx, FIT_UBATCH_DENSE)
+    probe_dense = probe_fit_config(tag, probe_ctx, fit_target, FIT_UBATCH_DENSE)
+    probe_moe = probe_fit_config(tag, probe_ctx, fit_target, FIT_UBATCH_MOE)
+    strategy = resolve_probe_strategy(probe_dense, probe_moe)
 
-    log(f"MoE model: trying preferred ub={FIT_UBATCH_MOE}")
-    preferred_results, chosen_preferred, reason_preferred, is_moe = _scan_with_refinement(
-        tag, ctx_targets, fit_target, max_ctx, FIT_UBATCH_MOE
+    if strategy is None:
+        log("reference probes failed; falling back to descending scan with ub=512")
+        return fallback_scan_strategy(tag, ctx_targets, fit_target, FIT_UBATCH_DENSE)
+
+    selected_probe, target_ngl, is_moe = strategy
+    selected_ubatch = selected_probe["ubatch"]
+    model_type = "MoE" if is_moe else "Dense"
+    log(
+        f"{model_type} model: target ngl={format_ngl(target_ngl)} -> using ub={selected_ubatch}"
     )
 
-    if chosen_preferred and probe_ngl is not None and chosen_preferred["ngl"] == probe_ngl:
-        return preferred_results, chosen_preferred, reason_preferred, is_moe
-
-    log()
-    log(f"preferred ub={FIT_UBATCH_MOE} did not preserve max ngl; retrying with ub={FIT_UBATCH_DENSE}")
-    fallback_results, chosen_fallback, reason_fallback, is_moe = _scan_with_refinement(
-        tag, ctx_targets, fit_target, max_ctx, FIT_UBATCH_DENSE
+    results, chosen = run_target_scan(
+        tag,
+        ctx_targets,
+        fit_target,
+        max_ctx,
+        selected_ubatch,
+        target_ngl,
+        descending=is_moe or target_ngl == -1,
+        probe_result=selected_probe,
     )
-
-    chosen = prefer_result(chosen_preferred, chosen_fallback)
-    if chosen is chosen_preferred:
-        return preferred_results, chosen_preferred, reason_preferred, is_moe
-    return fallback_results, chosen_fallback, reason_fallback, is_moe
+    return finalize_target_scan(results, chosen, target_ngl, is_moe)
 
 
 def select_best_result(results):
@@ -483,7 +640,7 @@ def select_best_result(results):
     )
 
 
-def run_bench(tag, ngl, ot, ubatch, reps=REPS):
+def run_bench(tag, ngl, ot, ubatch, reps=REPS, prio=None):
     ngl_arg = 99 if ngl == -1 else ngl
     log(
         f"starting llama-bench for {tag} with ngl={format_ngl(ngl)} ub={ubatch} reps={reps}"
@@ -505,6 +662,8 @@ def run_bench(tag, ngl, ot, ubatch, reps=REPS):
         "-r",
         str(reps),
     ]
+    if prio is not None:
+        base_cmd += ["--prio", str(prio)]
     if ot:
         base_cmd += ot_to_bench_arg(ot)
 
@@ -612,7 +771,7 @@ def print_summary(display_name, quant, provider, size_gib, chosen, is_moe, bench
     print_markdown_table(headers, rows)
 
 
-def write_result_row(tag, chosen, is_moe, bench_result, caps, vision_mode, reps):
+def write_result_row(tag, chosen, is_moe, bench_result, caps, vision_mode, reps, fit_target):
     display_name = display_name_from_tag(tag)
     repo = tag.split(":")[0] if ":" in tag else tag
     provider = repo.split("/")[0] if "/" in repo else repo
@@ -667,6 +826,8 @@ def write_result_row(tag, chosen, is_moe, bench_result, caps, vision_mode, reps)
     }
 
     if vision_mode:
+        row["fit_target"] = ""
+        row["vfit_target"] = str(fit_target)
         row["vctx"] = ctx_val
         row["vngl"] = ngl_val
         row["vubatch"] = ubatch_val
@@ -685,6 +846,8 @@ def write_result_row(tag, chosen, is_moe, bench_result, caps, vision_mode, reps)
         row[TG_STDDEV_COL] = ""
         row["reps"] = ""
     else:
+        row["fit_target"] = str(fit_target)
+        row["vfit_target"] = ""
         row["ctx"] = ctx_val
         row["ngl"] = ngl_val
         row["ubatch"] = ubatch_val
@@ -718,16 +881,16 @@ def benchmark_tag(tag, args):
         log("skipping non-vision model in vision mode")
         return
 
-    max_ctx = get_max_ctx(tag)
+    max_ctx = get_max_ctx(tag, prio=args.prio)
     if args.vision:
-        fit_target = FIT_TARGET + mmproj_mib
+        fit_target = fit_target_mib(mmproj_mib)
         log(f"vision model detected: mmproj={mmproj_mib} MiB, fit-target={fit_target} MiB")
     else:
-        fit_target = FIT_TARGET
+        fit_target = fit_target_mib()
         mmproj_mib = get_mmproj_size_mib(tag)
         if mmproj_mib > 0:
             log(
-                f"vision model detected (mmproj={mmproj_mib} MiB) — running in text mode (fit-target={FIT_TARGET})"
+                f"vision model detected (mmproj={mmproj_mib} MiB) — running in text mode (fit-target={fit_target})"
             )
 
     ctx_targets = build_ctx_list(max_ctx)
@@ -772,6 +935,7 @@ def benchmark_tag(tag, args):
             chosen["ot_raw"],
             chosen.get("ubatch", FIT_UBATCH_DENSE) if args.ubatch is None else args.ubatch,
             reps=args.reps,
+            prio=args.prio,
         )
         if bench_result is None:
             log("benchmark failed")
@@ -799,7 +963,16 @@ def benchmark_tag(tag, args):
         log(
             f"Capabilities: vision={caps['vision']} reasoning={caps['reasoning']} switchable={caps['switchable']} effort={caps['effort']}"
         )
-        write_result_row(tag, chosen, is_moe, bench_result, caps, vision_mode=args.vision, reps=args.reps)
+        write_result_row(
+            tag,
+            chosen,
+            is_moe,
+            bench_result,
+            caps,
+            vision_mode=args.vision,
+            reps=args.reps,
+            fit_target=fit_target,
+        )
 
     log(f"Finished model in {time.monotonic() - start_time:.1f}s")
 
@@ -820,9 +993,18 @@ def main():
     parser.add_argument("-p", "--provider", action="append", help="Only benchmark models from this provider (e.g. unsloth)")
     parser.add_argument("-g", "--group", action="append", help="Only benchmark models in this group (e.g. qwen3.6-35b-a3b)")
     parser.add_argument("-ub", "--ubatch", type=int, default=None, help="Force ubatch value (e.g. 512 or 1024)")
+    parser.add_argument(
+        "--prio",
+        type=int,
+        choices=[-1, 0, 1, 2, 3],
+        default=None,
+        help="Pass llama-bench process priority through (--prio -1|0|1|2|3)",
+    )
     parser.add_argument("--log-file", help="Write timestamped progress logs to this file")
     args = parser.parse_args()
-
+    if not acquire_run_lock():
+        print("fit_bench.py is already running; refusing parallel execution", file=sys.stderr)
+        return 1
     set_log_file(args.log_file)
 
     if args.all and args.tags:
@@ -859,6 +1041,8 @@ def main():
         if total > 1 and i != total:
             print(flush=True)
 
+    return 0
+
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
