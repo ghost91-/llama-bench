@@ -48,6 +48,7 @@ from results import (
     format_ngl,
     format_params,
     load_models,
+    parse_ctx,
     sort_results_file,
 )
 
@@ -259,6 +260,76 @@ def fit_target_mib(mmproj_mib=0):
     return FIT_TARGET + mmproj_mib
 
 
+def parse_int_field(value):
+    if not value or value in ("-", "?"):
+        return None
+    return int(value)
+
+
+def parse_ngl_field(value):
+    if not value or value in ("-", "?"):
+        return None
+    value = value.strip().lower()
+    if value == "all":
+        return -1
+    return int(value)
+
+
+def load_existing_fit_choice(tag, fit_target, vision_mode):
+    if not os.path.exists(RESULTS_FILE):
+        return None
+
+    display_name = display_name_from_tag(tag)
+    repo = tag.split(":")[0] if ":" in tag else tag
+    provider = repo.split("/")[0] if "/" in repo else repo
+    quant = tag.split(":")[1] if ":" in tag else ""
+
+    fit_target_col = "vfit_target" if vision_mode else "fit_target"
+    ctx_col = "vctx" if vision_mode else "ctx"
+    ngl_col = "vngl" if vision_mode else "ngl"
+    ubatch_col = "vubatch" if vision_mode else "ubatch"
+    moe_col = "vmoe_cpu" if vision_mode else "moe_cpu"
+    moe_raw_col = "vmoe_cpu_raw" if vision_mode else "moe_cpu_raw"
+
+    with open(RESULTS_FILE, newline="") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            if (
+                row.get("model") != display_name
+                or row.get("quant") != quant
+                or row.get("provider") != provider
+            ):
+                continue
+
+            stored_fit_target = parse_int_field(row.get(fit_target_col, ""))
+            if stored_fit_target != fit_target:
+                return None
+
+            ctx = parse_ctx(row.get(ctx_col, ""))
+            ngl = parse_ngl_field(row.get(ngl_col, ""))
+            ubatch = parse_int_field(row.get(ubatch_col, ""))
+            if ctx is None or ngl is None or ubatch is None:
+                return None
+
+            ot_raw = row.get(moe_raw_col, "").strip() or None
+            ot = row.get(moe_col, "").strip() or ot_label(ot_raw)
+            if vision_mode and row.get("model_type") == "MoE" and ot_raw is None:
+                return None
+            if ot and ot != "no" and ot_raw is None:
+                return None
+
+            return {
+                "target_ctx": ctx,
+                "ctx": ctx,
+                "ngl": ngl,
+                "ubatch": ubatch,
+                "ot": ot or "no",
+                "ot_raw": ot_raw,
+            }
+
+    return None
+
+
 def parse_fit_params(params_str):
     parts = params_str.split()
     c = ngl = ot = None
@@ -456,6 +527,33 @@ def probe_fit_config(tag, target_ctx, fit_target, ubatch):
         f"reference probe: ctx={format_ctx(target_ctx)} ub={ubatch} ngl={format_ngl(result['ngl'])} moe={result['ot']}"
     )
     return result
+
+
+def try_reuse_existing_fit_choice(tag, fit_target, max_ctx, vision_mode, forced_ubatch=None):
+    existing = load_existing_fit_choice(tag, fit_target, vision_mode)
+    if existing is None:
+        return None
+
+    if max_ctx is not None and existing["ctx"] > max_ctx:
+        log(
+            f"stored fit choice exceeds current max ctx: ctx={format_ctx(existing['ctx'])} max={format_ctx(max_ctx)}"
+        )
+        return None
+
+    if forced_ubatch is not None and forced_ubatch != existing["ubatch"]:
+        log(
+            f"stored fit choice uses ub={existing['ubatch']} but --ubatch={forced_ubatch}; falling back to scan"
+        )
+        return None
+
+    mode_label = "vision" if vision_mode else "text"
+    log(
+        "reusing stored fit choice from results: "
+        f"mode={mode_label} ctx={format_ctx(existing['ctx'])} ngl={format_ngl(existing['ngl'])} ub={existing['ubatch']}"
+    )
+
+    reason = f"Reused stored {mode_label} fit choice from {os.path.basename(RESULTS_FILE)}"
+    return [existing], existing, reason, bool(existing["ot_raw"])
 
 
 def result_below_target(result, target_ngl):
@@ -831,6 +929,8 @@ def write_result_row(tag, chosen, is_moe, bench_result, caps, vision_mode, reps,
         row["vctx"] = ctx_val
         row["vngl"] = ngl_val
         row["vubatch"] = ubatch_val
+        row["vmoe_cpu"] = moe_val
+        row["vmoe_cpu_raw"] = chosen["ot_raw"] or ""
         row[VPP_COL] = pp_f
         row[VPP_STDDEV_COL] = pp_stddev_f
         row[VTG_COL] = tg_f
@@ -840,6 +940,7 @@ def write_result_row(tag, chosen, is_moe, bench_result, caps, vision_mode, reps,
         row["ngl"] = ""
         row["ubatch"] = ""
         row["moe_cpu"] = ""
+        row["moe_cpu_raw"] = ""
         row[PP_COL] = ""
         row[PP_STDDEV_COL] = ""
         row[TG_COL] = ""
@@ -852,6 +953,7 @@ def write_result_row(tag, chosen, is_moe, bench_result, caps, vision_mode, reps,
         row["ngl"] = ngl_val
         row["ubatch"] = ubatch_val
         row["moe_cpu"] = moe_val
+        row["moe_cpu_raw"] = chosen["ot_raw"] or ""
         row[PP_COL] = pp_f
         row[PP_STDDEV_COL] = pp_stddev_f
         row[TG_COL] = tg_f
@@ -860,6 +962,8 @@ def write_result_row(tag, chosen, is_moe, bench_result, caps, vision_mode, reps,
         row["vctx"] = ""
         row["vngl"] = ""
         row["vubatch"] = ""
+        row["vmoe_cpu"] = ""
+        row["vmoe_cpu_raw"] = ""
         row[VPP_COL] = ""
         row[VPP_STDDEV_COL] = ""
         row[VTG_COL] = ""
@@ -900,13 +1004,24 @@ def benchmark_tag(tag, args):
     log(f"Candidate contexts: {', '.join(format_ctx(c) for c in ctx_targets)}")
     log()
 
-    scan_results, chosen, reason, is_moe = choose_scan_strategy(
+    reused_choice = try_reuse_existing_fit_choice(
         tag,
-        ctx_targets,
         fit_target,
         max_ctx,
+        args.vision,
         forced_ubatch=args.ubatch,
     )
+
+    if reused_choice is not None:
+        scan_results, chosen, reason, is_moe = reused_choice
+    else:
+        scan_results, chosen, reason, is_moe = choose_scan_strategy(
+            tag,
+            ctx_targets,
+            fit_target,
+            max_ctx,
+            forced_ubatch=args.ubatch,
+        )
 
     print_scan_table(scan_results, chosen)
 
