@@ -23,7 +23,7 @@ import argparse
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from huggingface_hub import list_repo_files, scan_cache_dir, snapshot_download
+from huggingface_hub import list_repo_files, snapshot_download
 
 from hf_gguf import find_best_mmproj_file, find_matching_model_files
 from results import load_models
@@ -40,25 +40,6 @@ def get_repo_files(
             repo_files_cache[repo_id] = None
     return repo_files_cache[repo_id]
 
-
-def build_cache_index() -> dict[str, set[str]]:
-    """Index cached HF files by repo id."""
-    try:
-        cache_info = scan_cache_dir()
-        return {
-            repo.repo_id: {rf.file_name for rev in repo.revisions for rf in rev.files}
-            for repo in cache_info.repos
-        }
-    except Exception:
-        return {}
-
-
-def is_in_cache(repo_id: str, filenames: list[str], cache_index: dict[str, set[str]]) -> bool:
-    """Check if all files are already in the HF cache."""
-    cached_files = cache_index.get(repo_id)
-    if cached_files is None:
-        return False
-    return all(f.split("/")[-1] in cached_files for f in filenames)
 
 
 def main():
@@ -106,8 +87,7 @@ def main():
         print(f"Filtering to groups: {', '.join(args.group)}")
     print()
 
-    stats = {"cached": 0, "downloaded": 0, "failed": 0, "skipped": 0, "missing": 0}
-    cache_index = build_cache_index()
+    stats = {"downloaded": 0, "failed": 0, "skipped": 0, "missing": 0}
     repo_files_cache: dict[str, list[str] | None] = {}
 
     repo_tasks = {}
@@ -136,20 +116,8 @@ def main():
         mmproj_files = [mmproj] if mmproj else []
         all_files = files + mmproj_files
 
-        if is_in_cache(repo_id, all_files, cache_index):
-            print(f"  [CACHED] Already in cache ({len(files)} model + {len(mmproj_files)} mmproj)")
-            stats["cached"] += 1
-            print()
-            continue
-
-        print("  Files to download:")
-        for f in files:
-            print(f"    - {f}")
-        for f in mmproj_files:
-            print(f"    - {f} (mmproj)")
-
         if args.dry_run:
-            print(f"  [DRY RUN] Would download {len(all_files)} file(s)")
+            print(f"  [DRY RUN] Would download/verify {len(all_files)} file(s)")
             stats["downloaded"] += 1
             print()
             continue
@@ -159,9 +127,9 @@ def main():
         repo_task["labels"].append(label)
 
     if not repo_tasks:
-        print("=== Done ===")
         print(
-            f"Cached: {stats['cached']}, Downloaded: {stats['downloaded']}, "
+            f"=== Done ===\n"
+            f"Downloaded: {stats['downloaded']}, "
             f"Missing: {stats['missing']}, Failed: {stats['failed']}, Skipped: {stats['skipped']}"
         )
         return
@@ -200,7 +168,7 @@ def main():
 
     print("=== Done ===")
     print(
-        f"Cached: {stats['cached']}, Downloaded: {stats['downloaded']}, "
+        f"Downloaded: {stats['downloaded']}, "
         f"Missing: {stats['missing']}, Failed: {stats['failed']}, Skipped: {stats['skipped']}"
     )
 
