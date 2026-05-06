@@ -32,7 +32,7 @@ def format_size(size: int) -> str:
 
 def build_desired_tags(models) -> dict[str, list[str]]:
     desired_tags = defaultdict(list)
-    for repo_id, tag, _group in models:
+    for repo_id, tag, _group, _pinned in models:
         desired_tags[repo_id].append(tag)
     return dict(desired_tags)
 

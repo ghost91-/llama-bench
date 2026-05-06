@@ -54,7 +54,7 @@ from results import (
 
 FIT_TARGET = 128
 FLASH_ATTN = 1
-REPS = 5
+REPS = 20
 BENCH_BATCH = 2048
 FIT_UBATCH_DENSE = 512
 FIT_UBATCH_MOE = 1024
@@ -1125,7 +1125,7 @@ def main():
     if args.all and args.tags:
         parser.error("cannot use --all with explicit tags")
     if args.all:
-        tags = [f"{repo}:{quant}" for repo, quant, _ in load_models()]
+        tags = [f"{repo}:{quant}" for repo, quant, _, _ in load_models()]
     elif args.tags:
         tags = args.tags
     elif args.provider or args.group:
@@ -1134,7 +1134,7 @@ def main():
             models = [m for m in models if m[0].split("/")[0] in args.provider]
         if args.group:
             models = [m for m in models if m[2] in args.group]
-        tags = [f"{repo}:{quant}" for repo, quant, _ in models]
+        tags = [f"{repo}:{quant}" for repo, quant, _, _ in models]
     else:
         tags = []
 

@@ -93,7 +93,7 @@ group = "gemma-4-e4b"
 # Gemma 4 26B A4B
 [[models]]
 repo = "unsloth/gemma-4-26B-A4B-it-GGUF"
-quant = "UD-IQ4_NL_XL"
+quant = "UD-IQ4_NL"
 group = "gemma-4-26b-a4b"
 
 [[models]]

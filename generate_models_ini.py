@@ -17,6 +17,7 @@ from results import (
     parse_ctx,
 )
 
+
 def parse_ngl(val):
     if not val or val == "-":
         return None
@@ -91,7 +92,9 @@ def format_sampler_settings(group, skip_keys=None):
 def generate_ini(models, results, output, dry_run):
     sections = []
     current_group = None
-    for repo_id, quant_tag, group in models:
+    for repo_id, quant_tag, group, pinned in models:
+        if not pinned:
+            continue
         full_tag = f"{repo_id}:{quant_tag}"
         if find_local_gguf_path(full_tag) is None:
             print(f"WARNING: {full_tag} not found on disk, skipping", file=sys.stderr)

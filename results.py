@@ -87,11 +87,15 @@ VISION_RESULT_COLS = (
 def load_models():
     with open(MODELS_TOML, "rb") as f:
         data = tomllib.load(f)
-    return [(m["repo"], m["quant"], m["group"]) for m in data.get("models", [])]
+    return [(m["repo"], m["quant"], m["group"], m.get("pinned", False)) for m in data.get("models", [])]
 
 
 def load_tags():
-    return [f"{repo}:{quant}" for repo, quant, _ in load_models()]
+    return [f"{repo}:{quant}" for repo, quant, _, _ in load_models()]
+
+
+def load_pinned_tags():
+    return [f"{repo}:{quant}" for repo, quant, _, pinned in load_models() if pinned]
 
 
 def parse_ctx(value):

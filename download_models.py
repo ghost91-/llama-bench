@@ -23,7 +23,7 @@ import argparse
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from huggingface_hub import list_repo_files, snapshot_download
+from huggingface_hub import list_repo_files, scan_cache_dir, snapshot_download
 
 from hf_gguf import find_best_mmproj_file, find_matching_model_files
 from results import load_models
@@ -40,6 +40,24 @@ def get_repo_files(
             repo_files_cache[repo_id] = None
     return repo_files_cache[repo_id]
 
+
+
+def evict_old_revisions():
+    try:
+        cache_info = scan_cache_dir()
+    except Exception:
+        return 0
+    old_hashes = []
+    for repo in cache_info.repos:
+        if len(repo.revisions) <= 1:
+            continue
+        revs = sorted(repo.revisions, key=lambda r: r.last_modified, reverse=True)
+        old_hashes.extend(r.commit_hash for r in revs[1:])
+    if not old_hashes:
+        return 0
+    strategy = cache_info.delete_revisions(*old_hashes)
+    strategy.execute()
+    return strategy.expected_freed_size
 
 
 def main():
@@ -74,10 +92,10 @@ def main():
     models = load_models()
 
     if args.list_groups:
-        groups = sorted(set(g for _, _, g in models))
+        groups = sorted(set(g for _, _, g, _ in models))
         print("Available groups:")
         for g in groups:
-            count = sum(1 for _, _, gr in models if gr == g)
+            count = sum(1 for _, _, gr, _ in models if gr == g)
             print(f"  {g} ({count} variants)")
         return
 
@@ -87,11 +105,17 @@ def main():
         print(f"Filtering to groups: {', '.join(args.group)}")
     print()
 
+    freed = evict_old_revisions()
+    if freed > 0:
+        freed_gib = freed / 1024**3
+        print(f"Evicted old cache revisions, freed {freed_gib:.1f} GiB")
+    print()
+
     stats = {"downloaded": 0, "failed": 0, "skipped": 0, "missing": 0}
     repo_files_cache: dict[str, list[str] | None] = {}
 
     repo_tasks = {}
-    for i, (repo_id, tag, group) in enumerate(models, 1):
+    for i, (repo_id, tag, group, _pinned) in enumerate(models, 1):
         if args.group and not any(group.startswith(g) for g in args.group):
             stats["skipped"] += 1
             continue
@@ -165,6 +189,11 @@ def main():
                     print(f"  [FAILED] {label}: {err}", file=sys.stderr)
                     stats["failed"] += 1
             print()
+
+    freed = evict_old_revisions()
+    if freed > 0:
+        freed_gib = freed / 1024**3
+        print(f"Evicted old cache revisions, freed {freed_gib:.1f} GiB")
 
     print("=== Done ===")
     print(
