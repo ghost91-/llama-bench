@@ -1,6 +1,7 @@
 import csv
 import os
 import tomllib
+from datetime import datetime, timezone
 
 from quant_order import QUANT_ORDER
 
@@ -66,6 +67,8 @@ CSV_FIELDNAMES = [
     "reason",
     "switch",
     "effort",
+    "bench_ts",
+    "vbench_ts",
 ]
 
 KNOWN_RESULT_COLS = set(CSV_FIELDNAMES)
@@ -81,6 +84,7 @@ VISION_RESULT_COLS = (
     VTG_COL,
     VTG_STDDEV_COL,
     "vreps",
+    "vbench_ts",
 )
 
 
@@ -291,6 +295,7 @@ def append_result_row(row_dict):
                     VTG_COL,
                     VTG_STDDEV_COL,
                     "vreps",
+                    "vbench_ts",
                 ],
             )
         else:
@@ -309,6 +314,7 @@ def append_result_row(row_dict):
                     TG_COL,
                     TG_STDDEV_COL,
                     "reps",
+                    "bench_ts",
                 ],
             )
             if not _has_vision_data(merged):
@@ -324,3 +330,31 @@ def append_result_row(row_dict):
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows(rows)
+
+
+def _parse_ts(ts_str):
+    if not ts_str:
+        return None
+    try:
+        return datetime.fromisoformat(ts_str).astimezone(timezone.utc)
+    except (ValueError, OSError):
+        return None
+
+
+def get_bench_ts(tag, vision_mode=False):
+    if not os.path.exists(RESULTS_FILE):
+        return None
+    display_name = display_name_from_tag(tag)
+    repo = tag.split(":")[0] if ":" in tag else tag
+    provider = repo.split("/")[0] if "/" in repo else repo
+    quant = tag.split(":")[1] if ":" in tag else ""
+    with open(RESULTS_FILE, newline="") as f:
+        for row in csv.DictReader(f):
+            if (
+                row.get("model") == display_name
+                and row.get("quant") == quant
+                and row.get("provider") == provider
+            ):
+                col = "vbench_ts" if vision_mode else "bench_ts"
+                return _parse_ts(row.get(col, ""))
+    return None

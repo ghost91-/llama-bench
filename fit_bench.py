@@ -27,6 +27,7 @@ import re
 import subprocess
 import sys
 import time
+from datetime import datetime, timedelta, timezone
 
 from gguf_utils import detect_capabilities, get_max_ctx_from_gguf, get_mmproj_size_mib
 from results import (
@@ -47,6 +48,7 @@ from results import (
     format_mmproj,
     format_ngl,
     format_params,
+    get_bench_ts,
     load_models,
     parse_ctx,
     sort_results_file,
@@ -59,10 +61,19 @@ BENCH_BATCH = 2048
 FIT_UBATCH_DENSE = 512
 FIT_UBATCH_MOE = 1024
 FIT_PARAMS_TIMEOUT = 600
-BENCH_TIMEOUT = 900
+BENCH_TIMEOUT = 1800
 
 _log_file = None
 _run_lock = None
+
+
+def _parse_resume_age(age_str):
+    m = re.fullmatch(r"(\d+)([mhd])", age_str)
+    if not m:
+        return None
+    value, unit = int(m.group(1)), m.group(2)
+    deltas = {"m": timedelta(minutes=value), "h": timedelta(hours=value), "d": timedelta(days=value)}
+    return datetime.now(timezone.utc) - deltas[unit]
 
 
 def log(message=""):
@@ -529,15 +540,9 @@ def probe_fit_config(tag, target_ctx, fit_target, ubatch):
     return result
 
 
-def try_reuse_existing_fit_choice(tag, fit_target, max_ctx, vision_mode, forced_ubatch=None):
+def try_reuse_existing_fit_choice(tag, fit_target, vision_mode, forced_ubatch=None):
     existing = load_existing_fit_choice(tag, fit_target, vision_mode)
     if existing is None:
-        return None
-
-    if max_ctx is not None and existing["ctx"] > max_ctx:
-        log(
-            f"stored fit choice exceeds current max ctx: ctx={format_ctx(existing['ctx'])} max={format_ctx(max_ctx)}"
-        )
         return None
 
     if forced_ubatch is not None and forced_ubatch != existing["ubatch"]:
@@ -767,7 +772,11 @@ def run_bench(tag, ngl, ot, ubatch, reps=REPS, prio=None):
 
     cmd = base_cmd + ["-p", str(BENCH_PP), "-n", str(BENCH_TG), "-d", "0"]
 
-    run = subprocess.run(cmd, capture_output=True, text=True, timeout=BENCH_TIMEOUT)
+    try:
+        run = subprocess.run(cmd, capture_output=True, text=True, timeout=BENCH_TIMEOUT)
+    except subprocess.TimeoutExpired:
+        log(f"benchmark timed out after {BENCH_TIMEOUT}s")
+        return None
     if run.returncode != 0 and not run.stdout.strip():
         return None
 
@@ -936,6 +945,7 @@ def write_result_row(tag, chosen, is_moe, bench_result, caps, vision_mode, reps,
         row[VTG_COL] = tg_f
         row[VTG_STDDEV_COL] = tg_stddev_f
         row["vreps"] = str(reps)
+        row["vbench_ts"] = time.strftime("%Y-%m-%dT%H:%M:%S%z")
         row["ctx"] = ""
         row["ngl"] = ""
         row["ubatch"] = ""
@@ -946,6 +956,7 @@ def write_result_row(tag, chosen, is_moe, bench_result, caps, vision_mode, reps,
         row[TG_COL] = ""
         row[TG_STDDEV_COL] = ""
         row["reps"] = ""
+        row["bench_ts"] = ""
     else:
         row["fit_target"] = str(fit_target)
         row["vfit_target"] = ""
@@ -959,6 +970,7 @@ def write_result_row(tag, chosen, is_moe, bench_result, caps, vision_mode, reps,
         row[TG_COL] = tg_f
         row[TG_STDDEV_COL] = tg_stddev_f
         row["reps"] = str(reps)
+        row["bench_ts"] = time.strftime("%Y-%m-%dT%H:%M:%S%z")
         row["vctx"] = ""
         row["vngl"] = ""
         row["vubatch"] = ""
@@ -969,6 +981,7 @@ def write_result_row(tag, chosen, is_moe, bench_result, caps, vision_mode, reps,
         row[VTG_COL] = ""
         row[VTG_STDDEV_COL] = ""
         row["vreps"] = ""
+        row["vbench_ts"] = ""
 
     append_result_row(row)
     sort_results_file()
@@ -985,29 +998,21 @@ def benchmark_tag(tag, args):
         log("skipping non-vision model in vision mode")
         return
 
-    max_ctx = get_max_ctx(tag, prio=args.prio)
     if args.vision:
         fit_target = fit_target_mib(mmproj_mib)
         log(f"vision model detected: mmproj={mmproj_mib} MiB, fit-target={fit_target} MiB")
     else:
         fit_target = fit_target_mib()
-        mmproj_mib = get_mmproj_size_mib(tag)
         if mmproj_mib > 0:
             log(
                 f"vision model detected (mmproj={mmproj_mib} MiB) — running in text mode (fit-target={fit_target})"
             )
 
-    ctx_targets = build_ctx_list(max_ctx)
-
     log(f"Model: {tag}")
-    log(f"Max ctx: {format_ctx(max_ctx)}")
-    log(f"Candidate contexts: {', '.join(format_ctx(c) for c in ctx_targets)}")
-    log()
 
     reused_choice = try_reuse_existing_fit_choice(
         tag,
         fit_target,
-        max_ctx,
         args.vision,
         forced_ubatch=args.ubatch,
     )
@@ -1015,6 +1020,13 @@ def benchmark_tag(tag, args):
     if reused_choice is not None:
         scan_results, chosen, reason, is_moe = reused_choice
     else:
+        max_ctx = get_max_ctx(tag, prio=args.prio)
+        ctx_targets = build_ctx_list(max_ctx)
+
+        log(f"Max ctx: {format_ctx(max_ctx)}")
+        log(f"Candidate contexts: {', '.join(format_ctx(c) for c in ctx_targets)}")
+        log()
+
         scan_results, chosen, reason, is_moe = choose_scan_strategy(
             tag,
             ctx_targets,
@@ -1116,6 +1128,21 @@ def main():
         help="Pass llama-bench process priority through (--prio -1|0|1|2|3)",
     )
     parser.add_argument("--log-file", help="Write timestamped progress logs to this file")
+    parser.add_argument(
+        "-R",
+        "--resume",
+        type=str,
+        default=None,
+        metavar="AGE",
+        help="Skip models with results newer than AGE (e.g. 24h, 7d). Requires bench_ts in CSV.",
+    )
+    parser.add_argument(
+        "--start-at",
+        type=str,
+        default=None,
+        metavar="TAG",
+        help="Skip all models before TAG in the list (inclusive)",
+    )
     args = parser.parse_args()
     if not acquire_run_lock():
         print("fit_bench.py is already running; refusing parallel execution", file=sys.stderr)
@@ -1148,11 +1175,35 @@ def main():
     if not tags:
         parser.error("provide at least one tag or use --all")
 
+    if args.start_at:
+        try:
+            start_idx = tags.index(args.start_at)
+        except ValueError:
+            parser.error(f"--start-at tag {args.start_at!r} not found in tag list")
+        skipped = tags[:start_idx]
+        tags = tags[start_idx:]
+        if skipped:
+            log(f"Skipping {len(skipped)} models before {args.start_at}")
+
+    resume_cutoff = None
+    if args.resume:
+        resume_cutoff = _parse_resume_age(args.resume)
+        if resume_cutoff is None:
+            parser.error(f"invalid --resume age: {args.resume!r} (use e.g. 24h, 7d, 30m)")
+
     total = len(tags)
     for i, tag in enumerate(tags, start=1):
         if total > 1:
             log(f"[{i}/{total}] {tag}")
-        benchmark_tag(tag, args)
+        if resume_cutoff is not None:
+            ts = get_bench_ts(tag, vision_mode=args.vision)
+            if ts is not None and ts >= resume_cutoff:
+                log(f"skipping — benchmarked at {ts.isoformat()} (newer than {args.resume})")
+                continue
+        try:
+            benchmark_tag(tag, args)
+        except Exception as exc:
+            log(f"ERROR: {tag} failed — {exc}")
         if total > 1 and i != total:
             print(flush=True)
 

@@ -695,25 +695,9 @@ quant = "Q4_K_M"
 group = "qwen3.6-27b"
 
 [[models]]
-repo = "Jackrong/Qwen3.6-27B-GGUF"
+repo = "bartowski/Qwen_Qwen3.6-27B-GGUF"
 quant = "Q4_K_M"
 group = "qwen3.6-27b"
-
-[[models]]
-repo = "AaryanK/Qwen3.6-27B-GGUF"
-quant = "Q4_K_M"
-group = "qwen3.6-27b"
-
-# Qwen3.5 27B (dense)
-[[models]]
-repo = "unsloth/Qwen3.5-27B-GGUF"
-quant = "Q4_K_M"
-group = "qwen3.5-27b"
-
-[[models]]
-repo = "bartowski/Qwen_Qwen3.5-27B-GGUF"
-quant = "Q4_K_M"
-group = "qwen3.5-27b"
 
 # Ministral 3 3B Instruct
 [[models]]
