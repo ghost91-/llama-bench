@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 import argparse
-import csv
 import json
 import os
 import sys
@@ -11,52 +10,34 @@ from gguf_utils import (
 from sampler_config import FAMILY_DESCRIPTIONS, SAMPLER_CONFIG
 from results import (
     MODELS_FILE,
-    RESULTS_FILE,
     display_name_from_tag,
     load_models,
-    parse_ctx,
 )
+from scan_cache import load_scan_cache
 
 
-def parse_ngl(val):
-    if not val or val == "-":
-        return None
-    val = val.strip().lower()
-    if val == "all":
-        return -1
-    return int(val)
-
-
-def parse_ubatch(val):
-    if not val or val == "-":
-        return None
-    return int(val)
-
-
-def parse_results_table(filepath):
+def parse_scan_cache(cache):
     results = {}
-    if not os.path.exists(filepath):
-        return results
-    with open(filepath, newline="") as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            display_name = row["model"]
-            quant = row["quant"]
-            provider = row["provider"]
-            key = (display_name, quant, provider)
-            entry = {
-                "actual_ctx": parse_ctx(row["ctx"]),
-                "fit_target": parse_ubatch(row.get("fit_target", "")),
-                "ngl": parse_ngl(row["ngl"]),
-                "ubatch": parse_ubatch(row.get("ubatch", "")),
-                "vision": row["vision"].strip().lower() == "yes",
-                "mmproj": row["mmproj"],
-                "vision_fit_target": parse_ubatch(row.get("vfit_target", "")),
-                "vision_ctx": parse_ctx(row["vctx"]),
-                "vision_ngl": parse_ngl(row["vngl"]),
-                "vision_ubatch": parse_ubatch(row.get("vubatch", "")),
-            }
-            results[key] = entry
+    for tag, entry in cache.items():
+        display_name = display_name_from_tag(tag)
+        repo = tag.split(":")[0]
+        provider = repo.split("/")[0]
+        quant = tag.split(":")[1]
+        key = (display_name, quant, provider)
+        text = entry.get("text", {})
+        vision = entry.get("vision", {})
+        results[key] = {
+            "actual_ctx": text.get("ctx"),
+            "fit_target": text.get("fit_target"),
+            "ngl": text.get("ngl"),
+            "ubatch": text.get("ubatch"),
+            "vision": entry.get("has_vision", "no") == "yes",
+            "mmproj": entry.get("mmproj", ""),
+            "vision_fit_target": vision.get("fit_target"),
+            "vision_ctx": vision.get("ctx"),
+            "vision_ngl": vision.get("ngl"),
+            "vision_ubatch": vision.get("ubatch"),
+        }
     return results
 
 
@@ -103,7 +84,7 @@ def generate_ini(models, results, output, dry_run):
         provider_prefix = repo_id.split("/")[0]
         entry = results.get((display_name, quant_tag, provider_prefix))
         if not entry:
-            print(f"WARNING: {full_tag} has no benchmark results, skipping", file=sys.stderr)
+            print(f"WARNING: {full_tag} has no scan results, skipping", file=sys.stderr)
             continue
         is_vision_capable = entry["vision"]
         text_ctx = entry["actual_ctx"]
@@ -197,7 +178,8 @@ def main():
     args = parser.parse_args()
 
     models = load_models()
-    results = parse_results_table(RESULTS_FILE)
+    cache = load_scan_cache()
+    results = parse_scan_cache(cache)
     generate_ini(models, results, args.output, args.dry_run)
 
 

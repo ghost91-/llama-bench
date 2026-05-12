@@ -15,7 +15,7 @@ The scan must therefore run to completion to find the true max ngl.
 
 Usage:
     python fit-bench.py unsloth/Qwen3.6-35B-A3B-GGUF:Q4_K_M
-    python fit-bench.py unsloth/Qwen3.6-35B-A3B-GGUF:Q4_K_M --list
+    python fit-bench.py unsloth/Qwen3.6-35B-A3B-GGUF:Q4_K_M --scan
 """
 
 import argparse
@@ -50,8 +50,16 @@ from results import (
     format_params,
     get_bench_ts,
     load_models,
-    parse_ctx,
     sort_results_file,
+)
+from scan_cache import (
+    get_scan_entry,
+    get_scan_ts,
+    load_scan_cache,
+    migrate_from_csv,
+    save_scan_cache,
+    set_scan_entry,
+    SCAN_CACHE_FILE,
 )
 
 FIT_TARGET = 128
@@ -271,74 +279,46 @@ def fit_target_mib(mmproj_mib=0):
     return FIT_TARGET + mmproj_mib
 
 
-def parse_int_field(value):
-    if not value or value in ("-", "?"):
-        return None
-    return int(value)
-
-
-def parse_ngl_field(value):
-    if not value or value in ("-", "?"):
-        return None
-    value = value.strip().lower()
-    if value == "all":
-        return -1
-    return int(value)
-
-
-def load_existing_fit_choice(tag, fit_target, vision_mode):
-    if not os.path.exists(RESULTS_FILE):
+def load_existing_fit_choice(tag, fit_target, vision_mode, cache=None):
+    if cache is None:
+        cache = load_scan_cache()
+    entry = get_scan_entry(cache, tag, vision_mode)
+    if entry is None:
         return None
 
-    display_name = display_name_from_tag(tag)
-    repo = tag.split(":")[0] if ":" in tag else tag
-    provider = repo.split("/")[0] if "/" in repo else repo
-    quant = tag.split(":")[1] if ":" in tag else ""
+    if entry.get("fit_target") != fit_target:
+        return None
 
-    fit_target_col = "vfit_target" if vision_mode else "fit_target"
-    ctx_col = "vctx" if vision_mode else "ctx"
-    ngl_col = "vngl" if vision_mode else "ngl"
-    ubatch_col = "vubatch" if vision_mode else "ubatch"
-    moe_col = "vmoe_cpu" if vision_mode else "moe_cpu"
-    moe_raw_col = "vmoe_cpu_raw" if vision_mode else "moe_cpu_raw"
+    raw_ctx = entry.get("ctx")
+    ctx = None
+    if raw_ctx is not None:
+        ctx = int(raw_ctx)
 
-    with open(RESULTS_FILE, newline="") as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            if (
-                row.get("model") != display_name
-                or row.get("quant") != quant
-                or row.get("provider") != provider
-            ):
-                continue
+    raw_ngl = entry.get("ngl")
+    ngl = None
+    if raw_ngl is not None:
+        ngl = -1 if raw_ngl == "all" else int(raw_ngl)
 
-            stored_fit_target = parse_int_field(row.get(fit_target_col, ""))
-            if stored_fit_target != fit_target:
-                return None
+    ubatch = entry.get("ubatch")
+    if ubatch is not None:
+        ubatch = int(ubatch)
 
-            ctx = parse_ctx(row.get(ctx_col, ""))
-            ngl = parse_ngl_field(row.get(ngl_col, ""))
-            ubatch = parse_int_field(row.get(ubatch_col, ""))
-            if ctx is None or ngl is None or ubatch is None:
-                return None
+    if ctx is None or ngl is None or ubatch is None:
+        return None
 
-            ot_raw = row.get(moe_raw_col, "").strip() or None
-            ot = row.get(moe_col, "").strip() or ot_label(ot_raw)
-            if vision_mode and row.get("model_type") == "MoE" and ot_raw is None:
-                return None
-            if ot and ot != "no" and ot_raw is None:
-                return None
+    ot_raw = entry.get("moe_cpu_raw")
+    ot = entry.get("moe_cpu", "no") or ot_label(ot_raw)
+    if ot and ot != "no" and ot_raw is None:
+        return None
 
-            return {
-                "target_ctx": ctx,
-                "ctx": ctx,
-                "ngl": ngl,
-                "ubatch": ubatch,
-                "ot": ot or "no",
-                "ot_raw": ot_raw,
-            }
-
-    return None
+    return {
+        "target_ctx": ctx,
+        "ctx": ctx,
+        "ngl": ngl,
+        "ubatch": ubatch,
+        "ot": ot or "no",
+        "ot_raw": ot_raw,
+    }
 
 
 def parse_fit_params(params_str):
@@ -540,8 +520,8 @@ def probe_fit_config(tag, target_ctx, fit_target, ubatch):
     return result
 
 
-def try_reuse_existing_fit_choice(tag, fit_target, vision_mode, forced_ubatch=None):
-    existing = load_existing_fit_choice(tag, fit_target, vision_mode)
+def try_reuse_existing_fit_choice(tag, fit_target, vision_mode, forced_ubatch=None, cache=None):
+    existing = load_existing_fit_choice(tag, fit_target, vision_mode, cache=cache)
     if existing is None:
         return None
 
@@ -553,11 +533,11 @@ def try_reuse_existing_fit_choice(tag, fit_target, vision_mode, forced_ubatch=No
 
     mode_label = "vision" if vision_mode else "text"
     log(
-        "reusing stored fit choice from results: "
+        "reusing cached fit choice: "
         f"mode={mode_label} ctx={format_ctx(existing['ctx'])} ngl={format_ngl(existing['ngl'])} ub={existing['ubatch']}"
     )
 
-    reason = f"Reused stored {mode_label} fit choice from {os.path.basename(RESULTS_FILE)}"
+    reason = f"Reused cached {mode_label} fit choice"
     return [existing], existing, reason, bool(existing["ot_raw"])
 
 
@@ -878,14 +858,12 @@ def print_summary(display_name, quant, provider, size_gib, chosen, is_moe, bench
     print_markdown_table(headers, rows)
 
 
-def write_result_row(tag, chosen, is_moe, bench_result, caps, vision_mode, reps, fit_target):
+def write_result_row(tag, chosen, is_moe, bench_result, caps, vision_mode, reps):
     display_name = display_name_from_tag(tag)
     repo = tag.split(":")[0] if ":" in tag else tag
     provider = repo.split("/")[0] if "/" in repo else repo
     quant = tag.split(":")[1] if ":" in tag else ""
     model_kind = "MoE" if is_moe else "Dense"
-    mmproj_mib = get_mmproj_size_mib(tag)
-    mmproj_col = format_mmproj(mmproj_mib)
     size_gib = ""
     n_params = ""
     if bench_result:
@@ -925,21 +903,16 @@ def write_result_row(tag, chosen, is_moe, bench_result, caps, vision_mode, reps,
         "size_gib": size_gib,
         "params": n_params,
         "model_type": model_kind,
-        "mmproj": mmproj_col,
-        "vision": caps["vision"],
         "reason": caps["reasoning"],
         "switch": caps["switchable"],
         "effort": caps["effort"],
     }
 
     if vision_mode:
-        row["fit_target"] = ""
-        row["vfit_target"] = str(fit_target)
         row["vctx"] = ctx_val
         row["vngl"] = ngl_val
         row["vubatch"] = ubatch_val
         row["vmoe_cpu"] = moe_val
-        row["vmoe_cpu_raw"] = chosen["ot_raw"] or ""
         row[VPP_COL] = pp_f
         row[VPP_STDDEV_COL] = pp_stddev_f
         row[VTG_COL] = tg_f
@@ -950,7 +923,6 @@ def write_result_row(tag, chosen, is_moe, bench_result, caps, vision_mode, reps,
         row["ngl"] = ""
         row["ubatch"] = ""
         row["moe_cpu"] = ""
-        row["moe_cpu_raw"] = ""
         row[PP_COL] = ""
         row[PP_STDDEV_COL] = ""
         row[TG_COL] = ""
@@ -958,13 +930,10 @@ def write_result_row(tag, chosen, is_moe, bench_result, caps, vision_mode, reps,
         row["reps"] = ""
         row["bench_ts"] = ""
     else:
-        row["fit_target"] = str(fit_target)
-        row["vfit_target"] = ""
         row["ctx"] = ctx_val
         row["ngl"] = ngl_val
         row["ubatch"] = ubatch_val
         row["moe_cpu"] = moe_val
-        row["moe_cpu_raw"] = chosen["ot_raw"] or ""
         row[PP_COL] = pp_f
         row[PP_STDDEV_COL] = pp_stddev_f
         row[TG_COL] = tg_f
@@ -975,7 +944,6 @@ def write_result_row(tag, chosen, is_moe, bench_result, caps, vision_mode, reps,
         row["vngl"] = ""
         row["vubatch"] = ""
         row["vmoe_cpu"] = ""
-        row["vmoe_cpu_raw"] = ""
         row[VPP_COL] = ""
         row[VPP_STDDEV_COL] = ""
         row[VTG_COL] = ""
@@ -988,7 +956,26 @@ def write_result_row(tag, chosen, is_moe, bench_result, caps, vision_mode, reps,
     log(f"Results appended to {RESULTS_FILE}")
 
 
-def benchmark_tag(tag, args):
+def write_scan_cache_entry(cache, tag, vision, fit_target, chosen, mmproj_mib):
+    caps = detect_capabilities(tag)
+    scan_entry = {
+        "fit_target": fit_target,
+        "ctx": chosen["ctx"],
+        "ngl": chosen["ngl"],
+        "ubatch": chosen.get("ubatch"),
+        "moe_cpu": chosen["ot"],
+        "moe_cpu_raw": chosen.get("ot_raw"),
+        "scan_ts": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S%z"),
+    }
+    set_scan_entry(
+        cache, tag, vision, scan_entry,
+        mmproj=format_mmproj(mmproj_mib), vision=caps["vision"],
+    )
+    save_scan_cache(cache)
+    return caps
+
+
+def benchmark_tag(tag, args, cache):
     start_time = time.monotonic()
     quant = tag.split(":")[1] if ":" in tag else ""
     display_name = display_name_from_tag(tag)
@@ -1010,16 +997,47 @@ def benchmark_tag(tag, args):
 
     log(f"Model: {tag}")
 
-    reused_choice = try_reuse_existing_fit_choice(
-        tag,
-        fit_target,
-        args.vision,
-        forced_ubatch=args.ubatch,
-    )
+    need_scan = True
+    rescan_cutoff = args.rescan_cutoff
 
-    if reused_choice is not None:
-        scan_results, chosen, reason, is_moe = reused_choice
-    else:
+    cached_entry = get_scan_entry(cache, tag, args.vision)
+    if cached_entry is not None:
+        if rescan_cutoff is not None:
+            scan_ts = get_scan_ts(cache, tag, args.vision)
+            if scan_ts is not None and scan_ts >= rescan_cutoff:
+                need_scan = False
+        else:
+            need_scan = False
+
+        if args.ubatch is not None and cached_entry.get("ubatch") != args.ubatch:
+            need_scan = True
+
+        if not need_scan and cached_entry.get("fit_target") != fit_target:
+            need_scan = True
+
+    scan_results = None
+    chosen = None
+    reason = ""
+    is_moe = False
+    did_scan = False
+
+    if not need_scan and cached_entry is not None:
+        reused = try_reuse_existing_fit_choice(
+            tag, fit_target, args.vision, forced_ubatch=args.ubatch, cache=cache,
+        )
+        if reused is not None:
+            scan_results, chosen, reason, is_moe = reused
+            mode_label = "vision" if args.vision else "text"
+            log(
+                "reusing cached fit choice: "
+                f"mode={mode_label} ctx={format_ctx(chosen['ctx'])} ngl={format_ngl(chosen['ngl'])} ub={chosen['ubatch']}"
+            )
+            if args.scan:
+                log(f"scan cache hit for {mode_label} mode — use --rescan to force re-scan")
+        else:
+            need_scan = True
+
+    if need_scan:
         max_ctx = get_max_ctx(tag, prio=args.prio)
         ctx_targets = build_ctx_list(max_ctx)
 
@@ -1034,6 +1052,7 @@ def benchmark_tag(tag, args):
             max_ctx,
             forced_ubatch=args.ubatch,
         )
+        did_scan = True
 
     print_scan_table(scan_results, chosen)
 
@@ -1047,8 +1066,10 @@ def benchmark_tag(tag, args):
     size_gib = "?"
     bench_result = None
 
-    if args.list or not chosen:
-        pass
+    if args.scan or not chosen:
+        if chosen and did_scan:
+            write_scan_cache_entry(cache, tag, args.vision, fit_target, chosen, mmproj_mib)
+            log(f"Scan cache written to {SCAN_CACHE_FILE}")
     else:
         log()
         log("Benchmark:")
@@ -1081,12 +1102,7 @@ def benchmark_tag(tag, args):
             if bench_result["size_bytes"]:
                 size_gib = f"{int(bench_result['size_bytes']) / 1024**3:.2f}"
 
-    repo = tag.split(":")[0] if ":" in tag else tag
-    provider = repo.split("/")[0] if "/" in repo else repo
-    print_summary(display_name, quant, provider, size_gib, chosen, is_moe, bench_result)
-
-    if not args.list and chosen:
-        caps = detect_capabilities(tag)
+        caps = write_scan_cache_entry(cache, tag, args.vision, fit_target, chosen, mmproj_mib) if did_scan else detect_capabilities(tag)
         log(
             f"Capabilities: vision={caps['vision']} reasoning={caps['reasoning']} switchable={caps['switchable']} effort={caps['effort']}"
         )
@@ -1098,8 +1114,11 @@ def benchmark_tag(tag, args):
             caps,
             vision_mode=args.vision,
             reps=args.reps,
-            fit_target=fit_target,
         )
+
+    repo = tag.split(":")[0] if ":" in tag else tag
+    provider = repo.split("/")[0] if "/" in repo else repo
+    print_summary(display_name, quant, provider, size_gib, chosen, is_moe, bench_result)
 
     log(f"Finished model in {time.monotonic() - start_time:.1f}s")
 
@@ -1107,12 +1126,23 @@ def benchmark_tag(tag, args):
 def main():
     parser = argparse.ArgumentParser(description="Pick and benchmark the best context size")
     parser.add_argument("tags", nargs="*", help="HF repo:quant tags")
-    parser.add_argument(
-        "--all", action="store_true", help="Run sequentially for all tags from models.toml"
-    )
     parser.add_argument("-r", "--reps", type=int, default=REPS, help="Repetitions per test")
     parser.add_argument(
-        "--list", action="store_true", help="Only list fit params, don't benchmark"
+        "--scan", action="store_true", help="Only scan fit params, don't benchmark"
+    )
+    parser.add_argument(
+        "--rescan",
+        type=str,
+        default=None,
+        metavar="AGE",
+        help="Re-scan if scan_ts is older than AGE (e.g. 24h, 7d, 30m). Default: use cache.",
+    )
+    parser.add_argument(
+        "--rebench",
+        type=str,
+        default=None,
+        metavar="AGE",
+        help="Re-bench if bench_ts is older than AGE (e.g. 24h, 7d, 30m). Default: always bench.",
     )
     parser.add_argument(
         "--vision", action="store_true", help="Benchmark with mmproj VRAM budget (vision mode)"
@@ -1128,80 +1158,66 @@ def main():
         help="Pass llama-bench process priority through (--prio -1|0|1|2|3)",
     )
     parser.add_argument("--log-file", help="Write timestamped progress logs to this file")
-    parser.add_argument(
-        "-R",
-        "--resume",
-        type=str,
-        default=None,
-        metavar="AGE",
-        help="Skip models with results newer than AGE (e.g. 24h, 7d). Requires bench_ts in CSV.",
-    )
-    parser.add_argument(
-        "--start-at",
-        type=str,
-        default=None,
-        metavar="TAG",
-        help="Skip all models before TAG in the list (inclusive)",
-    )
     args = parser.parse_args()
     if not acquire_run_lock():
         print("fit_bench.py is already running; refusing parallel execution", file=sys.stderr)
         return 1
     set_log_file(args.log_file)
 
-    if args.all and args.tags:
-        parser.error("cannot use --all with explicit tags")
-    if args.all:
-        tags = [f"{repo}:{quant}" for repo, quant, _, _ in load_models()]
-    elif args.tags:
+    if args.scan and args.rebench is not None:
+        parser.error("--scan and --rebench are incompatible (--scan doesn't benchmark)")
+
+    if args.scan and args.reps != REPS:
+        log("warning: --reps has no effect in --scan mode")
+    if args.scan and args.prio is not None:
+        log("warning: --prio has no effect in --scan mode")
+
+    rescan_cutoff = None
+    if args.rescan:
+        rescan_cutoff = _parse_resume_age(args.rescan)
+        if rescan_cutoff is None:
+            parser.error(f"invalid --rescan age: {args.rescan!r} (use e.g. 24h, 7d, 30m)")
+
+    rebench_cutoff = None
+    if args.rebench is not None:
+        rebench_cutoff = _parse_resume_age(args.rebench)
+        if rebench_cutoff is None:
+            parser.error(f"invalid --rebench age: {args.rebench!r} (use e.g. 24h, 7d, 30m)")
+
+    args.rescan_cutoff = rescan_cutoff
+    args.rebench_cutoff = rebench_cutoff
+
+    if args.tags:
         tags = args.tags
-    elif args.provider or args.group:
+    else:
         models = load_models()
         if args.provider:
             models = [m for m in models if m[0].split("/")[0] in args.provider]
         if args.group:
             models = [m for m in models if m[2] in args.group]
         tags = [f"{repo}:{quant}" for repo, quant, _, _ in models]
-    else:
-        tags = []
-
-    if args.provider:
-        tags = [t for t in tags if t.split("/")[0].split(":")[0] in args.provider]
-    if args.group:
-        all_models = load_models()
-        group_repos = {m[0] for m in all_models if m[2] in args.group}
-        tags = [t for t in tags if t.split(":")[0] in group_repos]
 
     if not tags:
-        parser.error("provide at least one tag or use --all")
+        parser.error("no models matched — provide tags or use --provider/--group filters")
 
-    if args.start_at:
-        try:
-            start_idx = tags.index(args.start_at)
-        except ValueError:
-            parser.error(f"--start-at tag {args.start_at!r} not found in tag list")
-        skipped = tags[:start_idx]
-        tags = tags[start_idx:]
-        if skipped:
-            log(f"Skipping {len(skipped)} models before {args.start_at}")
-
-    resume_cutoff = None
-    if args.resume:
-        resume_cutoff = _parse_resume_age(args.resume)
-        if resume_cutoff is None:
-            parser.error(f"invalid --resume age: {args.resume!r} (use e.g. 24h, 7d, 30m)")
+    if not os.path.exists(SCAN_CACHE_FILE):
+        log("scan-cache.json not found, migrating from fit-bench-results.csv")
+        cache = migrate_from_csv()
+        log(f"migration complete: {len(cache)} entries written to {SCAN_CACHE_FILE}")
+    else:
+        cache = load_scan_cache()
 
     total = len(tags)
     for i, tag in enumerate(tags, start=1):
         if total > 1:
             log(f"[{i}/{total}] {tag}")
-        if resume_cutoff is not None:
+        if rebench_cutoff is not None and not args.scan:
             ts = get_bench_ts(tag, vision_mode=args.vision)
-            if ts is not None and ts >= resume_cutoff:
-                log(f"skipping — benchmarked at {ts.isoformat()} (newer than {args.resume})")
+            if ts is not None and ts >= rebench_cutoff:
+                log(f"skipping — benchmarked at {ts.isoformat()} (newer than {args.rebench})")
                 continue
         try:
-            benchmark_tag(tag, args)
+            benchmark_tag(tag, args, cache)
         except Exception as exc:
             log(f"ERROR: {tag} failed — {exc}")
         if total > 1 and i != total:

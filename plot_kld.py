@@ -42,6 +42,7 @@ class SubplotSpec(NamedTuple):
     ha: str
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+KLD_FILE = os.path.join(SCRIPT_DIR, "kld-results.csv")
 
 PROVIDER_STYLES = {
     "unsloth": ("#2166AC", "o", "^"),
@@ -50,11 +51,6 @@ PROVIDER_STYLES = {
 }
 
 DEFAULT_STYLE = ("#888888", "o", "^")
-
-KLD_FILES = {
-    "gemma-4-26B-A4B": os.path.join(SCRIPT_DIR, "Gemma4-26B-A4B-KLD.csv"),
-    "Qwen3.6-35B-A3B": os.path.join(SCRIPT_DIR, "Qwen3.6-35B-A3B-KLD.csv"),
-}
 
 DISPLAY_NAMES = {
     "gemma-4-26B-A4B": "Gemma 4 26B (A4B)",
@@ -273,12 +269,17 @@ def main():
     out_dir = SCRIPT_DIR
     bench = load_bench()
 
-    for model_name, kld_path in KLD_FILES.items():
-        if not os.path.exists(kld_path):
-            print(f"Skipping {model_name}: {kld_path} not found")
-            continue
-        kld = load_kld(kld_path)
-        merged = merge_kld_bench(kld, bench, model_name)
+    if not os.path.exists(KLD_FILE):
+        print(f"KLD file not found: {KLD_FILE}")
+        return
+
+    kld_all = load_kld(KLD_FILE)
+    by_model = {}
+    for row in kld_all:
+        by_model.setdefault(row["model"], []).append(row)
+
+    for model_name, kld_rows in by_model.items():
+        merged = merge_kld_bench(kld_rows, bench, model_name)
         if not merged:
             print(f"No matching bench data for {model_name}")
             continue

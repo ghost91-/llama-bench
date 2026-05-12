@@ -40,30 +40,24 @@ CSV_FIELDNAMES = [
     "size_gib",
     "params",
     "model_type",
-    "mmproj",
-    "fit_target",
     "ctx",
     "ngl",
     "ubatch",
     "moe_cpu",
-    "moe_cpu_raw",
     PP_COL,
     PP_STDDEV_COL,
     TG_COL,
     TG_STDDEV_COL,
     "reps",
-    "vfit_target",
     "vctx",
     "vngl",
     "vubatch",
     "vmoe_cpu",
-    "vmoe_cpu_raw",
     VPP_COL,
     VPP_STDDEV_COL,
     VTG_COL,
     VTG_STDDEV_COL,
     "vreps",
-    "vision",
     "reason",
     "switch",
     "effort",
@@ -73,12 +67,10 @@ CSV_FIELDNAMES = [
 
 KNOWN_RESULT_COLS = set(CSV_FIELDNAMES)
 VISION_RESULT_COLS = (
-    "vfit_target",
     "vctx",
     "vngl",
     "vubatch",
     "vmoe_cpu",
-    "vmoe_cpu_raw",
     VPP_COL,
     VPP_STDDEV_COL,
     VTG_COL,
@@ -108,6 +100,21 @@ def parse_ctx(value):
     value = value.strip().lower()
     if value.endswith("k"):
         return int(float(value[:-1]) * 1000)
+    return int(value)
+
+
+def parse_int_field(value):
+    if not value or value in ("-", "?"):
+        return None
+    return int(value)
+
+
+def parse_ngl_field(value):
+    if not value or value in ("-", "?"):
+        return None
+    value = value.strip().lower()
+    if value == "all":
+        return -1
     return int(value)
 
 
@@ -273,8 +280,6 @@ def append_result_row(row_dict):
                     "size_gib",
                     "params",
                     "model_type",
-                    "mmproj",
-                    "vision",
                     "reason",
                     "switch",
                     "effort",
@@ -289,7 +294,6 @@ def append_result_row(row_dict):
                     "vngl",
                     "vubatch",
                     "vmoe_cpu",
-                    "vmoe_cpu_raw",
                     VPP_COL,
                     VPP_STDDEV_COL,
                     VTG_COL,
@@ -303,12 +307,10 @@ def append_result_row(row_dict):
                 merged,
                 row_dict,
                 [
-                    "fit_target",
                     "ctx",
                     "ngl",
                     "ubatch",
                     "moe_cpu",
-                    "moe_cpu_raw",
                     PP_COL,
                     PP_STDDEV_COL,
                     TG_COL,

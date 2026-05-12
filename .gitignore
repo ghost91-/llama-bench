@@ -1,6 +1,22 @@
-.venv/
+# Python
 __pycache__/
 *.pyc
-logs/
+*.pyo
+.venv/
+
+# Tools
 .ruff_cache/
+.mypy_cache/
+
+# Runtime data
+logs/
 *.png
+scan-cache.json
+
+# Agents
+.agents/
+
+# Editors
+.zed/
+.vscode/
+.idea/
