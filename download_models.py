@@ -21,12 +21,28 @@ Usage:
 
 import argparse
 import sys
+from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Protocol, TypedDict, cast
 
-from huggingface_hub import list_repo_files, scan_cache_dir, snapshot_download
+import huggingface_hub
+from huggingface_hub import list_repo_files, scan_cache_dir
 
-from hf_gguf import find_best_mmproj_file, find_matching_model_files
-from results import load_models
+from llama_bench.gguf_cache import desired_gguf_files
+from llama_bench.results import load_models
+from llama_bench.schema_types import HFCacheInfo
+
+
+class RepoDownloadTask(TypedDict):
+    files: set[str]
+    labels: list[str]
+
+
+class SnapshotDownloadFn(Protocol):
+    def __call__(self, repo_id: str, *, allow_patterns: list[str] | None = None) -> str: ...
+
+
+snapshot_download_fn = cast(SnapshotDownloadFn, huggingface_hub.snapshot_download)
 
 
 def get_repo_files(
@@ -42,12 +58,12 @@ def get_repo_files(
 
 
 
-def evict_old_revisions():
+def evict_old_revisions() -> int:
     try:
-        cache_info = scan_cache_dir()
+        cache_info = cast(HFCacheInfo, scan_cache_dir())
     except Exception:
         return 0
-    old_hashes = []
+    old_hashes: list[str] = []
     for repo in cache_info.repos:
         if len(repo.revisions) <= 1:
             continue
@@ -60,7 +76,15 @@ def evict_old_revisions():
     return strategy.expected_freed_size
 
 
-def main():
+def print_stats(stats: dict[str, int]) -> None:
+    print("=== Done ===")
+    print(
+        f"Downloaded: {stats['downloaded']}, "
+        f"Missing: {stats['missing']}, Failed: {stats['failed']}, Skipped: {stats['skipped']}"
+    )
+
+
+def main() -> None:
     parser = argparse.ArgumentParser(
         description="Download GGUF models to the HF cache used by llama.cpp"
     )
@@ -92,10 +116,9 @@ def main():
     models = load_models()
 
     if args.list_groups:
-        groups = sorted(set(g for _, _, g, _ in models))
+        groups = Counter(g for _, _, g, _ in models)
         print("Available groups:")
-        for g in groups:
-            count = sum(1 for _, _, gr, _ in models if gr == g)
+        for g, count in sorted(groups.items()):
             print(f"  {g} ({count} variants)")
         return
 
@@ -111,10 +134,10 @@ def main():
         print(f"Evicted old cache revisions, freed {freed_gib:.1f} GiB")
     print()
 
-    stats = {"downloaded": 0, "failed": 0, "skipped": 0, "missing": 0}
+    stats: dict[str, int] = {"downloaded": 0, "failed": 0, "skipped": 0, "missing": 0}
     repo_files_cache: dict[str, list[str] | None] = {}
 
-    repo_tasks = {}
+    repo_tasks: dict[str, RepoDownloadTask] = {}
     for i, (repo_id, tag, group, _pinned) in enumerate(models, 1):
         if args.group and not any(group.startswith(g) for g in args.group):
             stats["skipped"] += 1
@@ -129,33 +152,25 @@ def main():
             print()
             continue
 
-        files = find_matching_model_files(repo_files, tag)
+        files = desired_gguf_files(repo_files, tag)
         if not files:
             print(f"  [MISSING] No files matching '{tag}' in {repo_id}")
             stats["missing"] += 1
             print()
             continue
 
-        mmproj = find_best_mmproj_file(repo_files, files[0])
-        mmproj_files = [mmproj] if mmproj else []
-        all_files = files + mmproj_files
-
         if args.dry_run:
-            print(f"  [DRY RUN] Would download/verify {len(all_files)} file(s)")
+            print(f"  [DRY RUN] Would download/verify {len(files)} file(s)")
             stats["downloaded"] += 1
             print()
             continue
 
-        repo_task = repo_tasks.setdefault(repo_id, {"files": set(), "labels": []})
-        repo_task["files"].update(all_files)
+        repo_task = repo_tasks.setdefault(repo_id, RepoDownloadTask(files=set(), labels=[]))
+        repo_task["files"].update(files)
         repo_task["labels"].append(label)
 
     if not repo_tasks:
-        print(
-            f"=== Done ===\n"
-            f"Downloaded: {stats['downloaded']}, "
-            f"Missing: {stats['missing']}, Failed: {stats['failed']}, Skipped: {stats['skipped']}"
-        )
+        print_stats(stats)
         return
 
     total_models = sum(len(task["labels"]) for task in repo_tasks.values())
@@ -164,15 +179,15 @@ def main():
         f"with {args.parallel} parallel repo worker(s) ===\n"
     )
 
-    repo_items = list(repo_tasks.items())
+    repo_items: list[tuple[str, RepoDownloadTask]] = list(repo_tasks.items())
     for i, (repo_id, task) in enumerate(repo_items, 1):
         print(
             f"[{i}/{len(repo_items)}] {repo_id} ({len(task['files'])} file(s), {len(task['labels'])} model(s))"
         )
 
-    def download_repo(item):
+    def download_repo(item: tuple[str, RepoDownloadTask]) -> list[str]:
         repo_id, task = item
-        snapshot_download(repo_id=repo_id, allow_patterns=sorted(task["files"]))
+        snapshot_download_fn(repo_id=repo_id, allow_patterns=sorted(task["files"]))
         return task["labels"]
 
     with ThreadPoolExecutor(max_workers=args.parallel) as pool:
@@ -195,11 +210,7 @@ def main():
         freed_gib = freed / 1024**3
         print(f"Evicted old cache revisions, freed {freed_gib:.1f} GiB")
 
-    print("=== Done ===")
-    print(
-        f"Downloaded: {stats['downloaded']}, "
-        f"Missing: {stats['missing']}, Failed: {stats['failed']}, Skipped: {stats['skipped']}"
-    )
+    print_stats(stats)
 
 
 if __name__ == "__main__":

@@ -4,9 +4,11 @@ Benchmark llama.cpp GGUF models to find optimal context sizes for a given GPU.
 
 ## Commands
 
-Uses `uv run` (no manual venv). No tests, no CI.
+Uses `uv run` (no manual venv).
 
 - **Lint:** `uv run ruff check .`
+- **Type check:** `uv run basedpyright`
+- **Tests:** `uv run pytest`
 - **Setup:** `uv sync` — requires `llama-fit-params`, `llama-bench`, `llama-server` on PATH
 - **Run:** `uv run fit_bench.py [tags...] [flags]`
 - **Download:** `uv run download_models.py`
@@ -21,7 +23,7 @@ Model list: `models.toml` is the single source of truth for all target models (r
 
 ## Context
 
-Targets an RTX 4070 Laptop (8 GB VRAM) + 64 GB RAM. `fit_bench.py` reserves 128 MiB VRAM for non-model use (hybrid dGPU setup). With `--vision`, the fit-target becomes `128 + mmproj size`.
+Targets an RTX 4070 Laptop (8 GB VRAM) + 64 GB RAM. `fit_bench.py` reserves 256 MiB VRAM for non-model use (hybrid dGPU setup). With `--vision`, the fit-target becomes `256 + mmproj size`.
 
 ## Workflows
 
@@ -41,10 +43,15 @@ Targets an RTX 4070 Laptop (8 GB VRAM) + 64 GB RAM. `fit_bench.py` reserves 128 
 
 ### Data files
 
-- `scan-cache.json`: scan results keyed by `repo:quant` tag, with `text`/`vision` sub-objects per mode. `has_vision` = capability flag (`"yes"`/`"no"`), `mmproj` = size string. Pruned to `models.toml` entries on every write.
-- `fit-bench-results.csv`: bench results with runtime config conditions. Vision cols update independently from text cols.
+- `scan-cache.json`: scan results keyed by `repo:quant` tag. Top-level fields: `mmproj`, `moe`, `max_ctx`, `max_ctx_ts`, `caps`, `text`, `vision`. `caps` contains `vision` and `reasoning`; `reasoning` is either `false` or an object with `switchable` and `efforts`. Per-ubatch scan entries contain `fit_target`, `ctx`, `ngl`, `offload`, `ot`, `scan_ts`. Pruned to `models.toml` entries on every write.
+- `fit-bench-results.csv`: benchmark results keyed by `(model, quant, provider, mode, ubatch)`. Current columns include `mode`, `ubatch`, `offload`, `pp4096_tps`, `pp4096_stddev_tps`, `tg128_tps`, `tg128_stddev_tps`, `reasoning`, `switchable`, `efforts`, `bench_ts`.
 - `kld-results.csv`: consolidated KLD data.
+- Runtime logs go in `logs/` (for example `logs/scan-text.log`, `logs/bench-vision.log`).
 
 ### Gotchas
 
 - MoE models: `llama-fit-params` can produce non-monotonic ngl — scan must run to completion
+- Active cache/output schema uses booleans and empty values; do not reintroduce legacy `yes` / `no` / `-` forms
+- Cleanup/migration compatibility code is temporary: once data files are rewritten cleanly, remove the compatibility path instead of keeping it around
+- Reasoning effort strings use `|`, not `/`
+- Keep logging concise and non-redundant; `fit_bench.py` output has already been trimmed intentionally

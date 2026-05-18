@@ -7,11 +7,12 @@ __pycache__/
 # Tools
 .ruff_cache/
 .mypy_cache/
+.pytest_cache/
 
 # Runtime data
 logs/
 *.png
-scan-cache.json
+scan-cache*.json
 
 # Agents
 .agents/

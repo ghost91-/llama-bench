@@ -19,16 +19,14 @@ Usage:
     uv run kld_extract.py path/to/image.png
 """
 
-from __future__ import annotations
-
 import argparse
 import csv
 import math
-import re
 import sys
 from pathlib import Path
+from typing import TypedDict
 
-from PySide6.QtCore import QPointF, QRectF, Qt, Signal
+from PySide6.QtCore import QEvent, QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import (
     QColor,
     QFont,
@@ -59,6 +57,17 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from llama_bench.kld_domain import (
+    AxisMode,
+    format_sci,
+    major_ticks,
+    measurement_csv_row,
+    minor_log_ticks,
+    parse_y_value,
+    pixel_to_y,
+    y_to_pixel,
+)
+
 AXIS_COLOUR = QColor(220, 60, 60)
 MEASUREMENT_COLOUR = QColor(30, 120, 220)
 HOVER_COLOUR = QColor(40, 40, 40, 200)
@@ -67,61 +76,11 @@ MAX_SCALE = 200.0
 ZOOM_STEP = 1.15
 
 
-def parse_y_value(raw: str) -> float:
-    """Parse strings like `10^-2`, `1e-2`, `0.01`, `2.5 x 10^-3`, `-3.14`."""
-    s = raw.strip().replace(" ", "")
-    if not s:
-        raise ValueError("empty value")
-
-    m = re.fullmatch(r"([+-]?\d+(?:\.\d+)?)(?:[x\*×])?10\^([+-]?\d+)", s)
-    if m:
-        return float(m.group(1)) * (10.0 ** int(m.group(2)))
-
-    m = re.fullmatch(r"10\^([+-]?\d+)", s)
-    if m:
-        return 10.0 ** int(m.group(1))
-
-    return float(s)
-
-
-def format_sci(value: float, sig: int = 3) -> str:
-    """Format as short scientific, e.g. `1.2e-2`, trimming trailing zeros."""
-    if value == 0:
-        return "0"
-    if not math.isfinite(value):
-        return str(value)
-    formatted = f"{value:.{sig - 1}e}"
-    mantissa, exp = formatted.split("e")
-    if "." in mantissa:
-        mantissa = mantissa.rstrip("0").rstrip(".")
-    exp_int = int(exp)
-    return f"{mantissa}e{exp_int:+d}"
-
-
-def nice_linear_ticks(lo: float, hi: float, target: int = 8) -> list[float]:
-    """Generate 'nice' (1/2/5 × 10^n) tick values covering [lo, hi] slightly extended."""
-    if lo > hi:
-        lo, hi = hi, lo
-    span = hi - lo
-    if span <= 0:
-        return [lo]
-    rough_step = span / max(target - 1, 1)
-    exp = math.floor(math.log10(rough_step))
-    base = 10**exp
-    step = base
-    for mult in (1, 2, 5, 10):
-        step = mult * base
-        if span / step <= target:
-            break
-    pad = step
-    start = math.floor((lo - pad) / step) * step
-    end = math.ceil((hi + pad) / step) * step
-    ticks = []
-    v = start
-    while v <= end + step * 0.5:
-        ticks.append(round(v / step) * step)
-        v += step
-    return ticks
+class Measurement(TypedDict):
+    id: int
+    label: str
+    px: float
+    py: float
 
 
 class ImageCanvas(QWidget):
@@ -136,7 +95,7 @@ class ImageCanvas(QWidget):
         self.pixmap = pixmap
         self.setMouseTracking(True)
         self.setMinimumSize(400, 300)
-        self.setFocusPolicy(Qt.StrongFocus)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
         # View transform: widget_pt = image_pt * scale + offset
         self.scale = 1.0
@@ -146,8 +105,8 @@ class ImageCanvas(QWidget):
         # All stored in image pixel coords.
         self.calib_points: list[QPointF] = []
         self.calib_values: list[float] = []
-        self.measurements: list[dict] = []
-        self.axis_mode = "log"
+        self.measurements: list[Measurement] = []
+        self.axis_mode: AxisMode = "log"
         self.snap_x_img: float | None = None
 
         # Interaction state.
@@ -202,7 +161,7 @@ class ImageCanvas(QWidget):
 
     # ---------- configuration setters ----------
 
-    def set_axis_mode(self, mode: str) -> None:
+    def set_axis_mode(self, mode: AxisMode) -> None:
         self.axis_mode = mode
         self.update()
 
@@ -211,7 +170,7 @@ class ImageCanvas(QWidget):
         self.calib_values = list(values)
         self.update()
 
-    def set_measurements(self, measurements: list[dict]) -> None:
+    def set_measurements(self, measurements: list[Measurement]) -> None:
         self.measurements = measurements
         self.update()
 
@@ -226,48 +185,29 @@ class ImageCanvas(QWidget):
             return None
         p1, p2 = self.calib_points
         v1, v2 = self.calib_values
-        if p1.y() == p2.y():
-            return None
-        t = (img_y - p1.y()) / (p2.y() - p1.y())
-        if self.axis_mode == "log":
-            if v1 <= 0 or v2 <= 0:
-                return None
-            log_y = math.log10(v1) + t * (math.log10(v2) - math.log10(v1))
-            return 10**log_y
-        return v1 + t * (v2 - v1)
+        return pixel_to_y(img_y, p1.y(), p2.y(), v1, v2, self.axis_mode)
 
     def y_to_pixel(self, y: float) -> float | None:
         if len(self.calib_points) != 2 or len(self.calib_values) != 2:
             return None
         p1, p2 = self.calib_points
         v1, v2 = self.calib_values
-        if self.axis_mode == "log":
-            if v1 <= 0 or v2 <= 0 or y <= 0:
-                return None
-            lv1, lv2, ly = math.log10(v1), math.log10(v2), math.log10(y)
-            if lv1 == lv2:
-                return None
-            t = (ly - lv1) / (lv2 - lv1)
-        else:
-            if v1 == v2:
-                return None
-            t = (y - v1) / (v2 - v1)
-        return p1.y() + t * (p2.y() - p1.y())
+        return y_to_pixel(y, p1.y(), p2.y(), v1, v2, self.axis_mode)
 
     # ---------- input ----------
 
     def _pan_button(self, event: QMouseEvent) -> bool:
-        return event.button() == Qt.MiddleButton or (
-            event.button() == Qt.LeftButton and self._space_held
+        return event.button() == Qt.MouseButton.MiddleButton or (
+            event.button() == Qt.MouseButton.LeftButton and self._space_held
         )
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
         if self._pan_button(event):
             self._panning = True
             self._pan_last = event.position()
-            self.setCursor(Qt.ClosedHandCursor)
+            self.setCursor(Qt.CursorShape.ClosedHandCursor)
             return
-        if event.button() != Qt.LeftButton:
+        if event.button() != Qt.MouseButton.LeftButton:
             return
         pos = event.position()
         img_pos = self.widget_to_img(pos)
@@ -279,11 +219,16 @@ class ImageCanvas(QWidget):
 
     def mouseReleaseEvent(self, event: QMouseEvent) -> None:
         if self._panning and (
-            event.button() == Qt.MiddleButton or event.button() == Qt.LeftButton
+            event.button() == Qt.MouseButton.MiddleButton
+            or event.button() == Qt.MouseButton.LeftButton
         ):
             self._panning = False
             self._pan_last = None
-            self.setCursor(Qt.OpenHandCursor if self._space_held else Qt.ArrowCursor)
+            self.setCursor(
+                Qt.CursorShape.OpenHandCursor
+                if self._space_held
+                else Qt.CursorShape.ArrowCursor
+            )
 
     def mouseMoveEvent(self, event: QMouseEvent) -> None:
         pos = event.position()
@@ -306,7 +251,7 @@ class ImageCanvas(QWidget):
         self.update()
 
     def mouseDoubleClickEvent(self, event: QMouseEvent) -> None:
-        if event.button() == Qt.LeftButton and not self._space_held:
+        if event.button() == Qt.MouseButton.LeftButton and not self._space_held:
             self.fit_to_window()
 
     def wheelEvent(self, event: QWheelEvent) -> None:
@@ -318,22 +263,22 @@ class ImageCanvas(QWidget):
         event.accept()
 
     def keyPressEvent(self, event: QKeyEvent) -> None:
-        if event.key() == Qt.Key_Space and not event.isAutoRepeat():
+        if event.key() == Qt.Key.Key_Space and not event.isAutoRepeat():
             self._space_held = True
             if not self._panning:
-                self.setCursor(Qt.OpenHandCursor)
+                self.setCursor(Qt.CursorShape.OpenHandCursor)
             return
         super().keyPressEvent(event)
 
     def keyReleaseEvent(self, event: QKeyEvent) -> None:
-        if event.key() == Qt.Key_Space and not event.isAutoRepeat():
+        if event.key() == Qt.Key.Key_Space and not event.isAutoRepeat():
             self._space_held = False
             if not self._panning:
-                self.setCursor(Qt.ArrowCursor)
+                self.setCursor(Qt.CursorShape.ArrowCursor)
             return
         super().keyReleaseEvent(event)
 
-    def leaveEvent(self, event) -> None:
+    def leaveEvent(self, event: QEvent) -> None:
         self.hover_widget_pos = None
         self.hover_y = None
         self.hover_left.emit()
@@ -347,8 +292,8 @@ class ImageCanvas(QWidget):
 
     def paintEvent(self, event: QPaintEvent) -> None:
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing)
-        painter.setRenderHint(QPainter.SmoothPixmapTransform)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
         painter.fillRect(self.rect(), QColor(20, 20, 20))
 
         target = self.image_widget_rect()
@@ -366,7 +311,7 @@ class ImageCanvas(QWidget):
         if self.snap_x_img is None:
             return
         x_w = self.img_to_widget(QPointF(self.snap_x_img, 0)).x()
-        pen = QPen(AXIS_COLOUR, 1, Qt.DashLine)
+        pen = QPen(AXIS_COLOUR, 1, Qt.PenStyle.DashLine)
         painter.setPen(pen)
         painter.drawLine(QPointF(x_w, target.top()), QPointF(x_w, target.bottom()))
 
@@ -381,7 +326,7 @@ class ImageCanvas(QWidget):
     def _draw_axis(self, painter: QPainter, target: QRectF) -> None:
         if len(self.calib_points) != 2 or len(self.calib_values) != 2:
             return
-        p1, p2 = self.calib_points
+        p1, _ = self.calib_points
         v1, v2 = self.calib_values
         x_w = self.img_to_widget(QPointF(p1.x(), 0)).x()
 
@@ -394,7 +339,7 @@ class ImageCanvas(QWidget):
         painter.setFont(font)
         fm = painter.fontMetrics()
 
-        minor_ticks = self._compute_minor_ticks(v1, v2) if self.axis_mode == "log" else []
+        minor_ticks = minor_log_ticks(v1, v2) if self.axis_mode == "log" else []
         pen_minor = QPen(AXIS_COLOUR, 1)
         painter.setPen(pen_minor)
         for v in minor_ticks:
@@ -406,10 +351,10 @@ class ImageCanvas(QWidget):
                 continue
             painter.drawLine(QPointF(x_w - 4, y_w), QPointF(x_w, y_w))
 
-        major_ticks = self._compute_major_ticks(v1, v2)
+        major_tick_values = major_ticks(v1, v2, self.axis_mode)
         pen_major = QPen(AXIS_COLOUR, 2)
         painter.setPen(pen_major)
-        for v, label in major_ticks:
+        for v, label in major_tick_values:
             py_img = self.y_to_pixel(v)
             if py_img is None:
                 continue
@@ -420,38 +365,6 @@ class ImageCanvas(QWidget):
             tw = fm.horizontalAdvance(label)
             th = fm.height()
             painter.drawText(QPointF(x_w - 10 - tw, y_w + th / 3), label)
-
-    def _compute_major_ticks(self, v1: float, v2: float) -> list[tuple[float, str]]:
-        lo, hi = (v1, v2) if v1 < v2 else (v2, v1)
-        if self.axis_mode == "log":
-            if lo <= 0 or hi <= 0:
-                return []
-            e_lo = math.floor(math.log10(lo)) - 1
-            e_hi = math.ceil(math.log10(hi)) + 1
-            return [(10**e, f"10^{e}") for e in range(e_lo, e_hi + 1)]
-        ticks = nice_linear_ticks(lo, hi)
-        return [(v, self._format_linear_label(v)) for v in ticks]
-
-    def _format_linear_label(self, v: float) -> str:
-        if v == 0:
-            return "0"
-        av = abs(v)
-        if av >= 1e4 or av < 1e-3:
-            return format_sci(v)
-        return f"{v:g}"
-
-    def _compute_minor_ticks(self, v1: float, v2: float) -> list[float]:
-        lo, hi = (v1, v2) if v1 < v2 else (v2, v1)
-        if lo <= 0 or hi <= 0:
-            return []
-        e_lo = math.floor(math.log10(lo)) - 1
-        e_hi = math.ceil(math.log10(hi)) + 1
-        out = []
-        for e in range(e_lo, e_hi + 1):
-            base = 10**e
-            for mult in range(2, 10):
-                out.append(mult * base)
-        return out
 
     def _draw_measurements(self, painter: QPainter) -> None:
         if not self.measurements:
@@ -471,10 +384,10 @@ class ImageCanvas(QWidget):
             w = self.img_to_widget(img_p)
 
             if axis_x_w is not None:
-                painter.setPen(QPen(MEASUREMENT_COLOUR, 1, Qt.DashLine))
+                painter.setPen(QPen(MEASUREMENT_COLOUR, 1, Qt.PenStyle.DashLine))
                 painter.drawLine(QPointF(axis_x_w, w.y()), QPointF(w.x(), w.y()))
 
-            painter.setPen(Qt.NoPen)
+            painter.setPen(Qt.PenStyle.NoPen)
             painter.setBrush(MEASUREMENT_COLOUR)
             painter.drawEllipse(w, 5, 5)
 
@@ -499,11 +412,15 @@ class ImageCanvas(QWidget):
             rect.moveLeft(self.hover_widget_pos.x() - 12 - tw)
         if rect.top() < 0:
             rect.moveTop(self.hover_widget_pos.y() + 12)
-        painter.setPen(Qt.NoPen)
+        painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(HOVER_COLOUR)
         painter.drawRoundedRect(rect, 3, 3)
         painter.setPen(QPen(QColor(240, 240, 240)))
-        painter.drawText(rect.adjusted(4, 0, 0, 0), Qt.AlignVCenter | Qt.AlignLeft, text)
+        painter.drawText(
+            rect.adjusted(4, 0, 0, 0),
+            Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft,
+            text,
+        )
 
 
 class LabelPopup(QLineEdit):
@@ -521,7 +438,7 @@ class LabelPopup(QLineEdit):
         self.committed.emit(text)
 
     def keyPressEvent(self, event: QKeyEvent) -> None:
-        if event.key() == Qt.Key_Escape:
+        if event.key() == Qt.Key.Key_Escape:
             self.cancelled.emit()
             return
         super().keyPressEvent(event)
@@ -546,7 +463,7 @@ class MainWindow(QMainWindow):
         # Calibration and measurements in image pixel coords.
         self.calib_points: list[QPointF] = []
         self.calib_values: list[float] = []
-        self.measurements: list[dict] = []
+        self.measurements: list[Measurement] = []
         self._next_id = 0
         self.popup: LabelPopup | None = None
         self.pending_img_pos: QPointF | None = None
@@ -625,7 +542,7 @@ class MainWindow(QMainWindow):
         self.canvas.set_snap_x(self.calib_points[0].x() if n == 1 else None)
 
     def _on_mode_changed(self) -> None:
-        mode = "log" if self.log_btn.isChecked() else "linear"
+        mode: AxisMode = "log" if self.log_btn.isChecked() else "linear"
         if (
             mode == "log"
             and len(self.calib_values) == 2
@@ -751,14 +668,18 @@ class MainWindow(QMainWindow):
             y = self.canvas.pixel_to_y(m["py"])
             y_str = format_sci(y) if y is not None else "—"
             item = QListWidgetItem(f"{m['label']}  {y_str}")
-            item.setData(Qt.UserRole, m["id"])
+            item.setData(Qt.ItemDataRole.UserRole, m["id"])
             self.list_widget.addItem(item)
 
     def _delete_selected(self) -> None:
         items = self.list_widget.selectedItems()
         if not items:
             return
-        ids_to_remove = {item.data(Qt.UserRole) for item in items}
+        ids_to_remove: set[int] = set()
+        for item in items:
+            item_id = item.data(Qt.ItemDataRole.UserRole)
+            if isinstance(item_id, int):
+                ids_to_remove.add(item_id)
         self.measurements = [m for m in self.measurements if m["id"] not in ids_to_remove]
         self.canvas.set_measurements(self.measurements)
         self._refresh_list()
@@ -774,19 +695,12 @@ class MainWindow(QMainWindow):
         path, _ = QFileDialog.getSaveFileName(self, "Save CSV", default, "CSV (*.csv)")
         if not path:
             return
-        rows = []
+        rows: list[dict[str, str | float]] = []
         for m in self.measurements:
             y = self.canvas.pixel_to_y(m["py"])
             if y is None:
                 continue
-            y_rounded = float(f"{y:.3g}")
-            rows.append(
-                {
-                    "label": m["label"],
-                    "y_value": y_rounded,
-                    "y_value_scientific": format_sci(y),
-                }
-            )
+            rows.append(measurement_csv_row(m["label"], y))
         with open(path, "w", newline="", encoding="utf-8") as f:
             writer = csv.DictWriter(f, fieldnames=["label", "y_value", "y_value_scientific"])
             writer.writeheader()

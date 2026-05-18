@@ -34,9 +34,9 @@ uv run generate_models_ini.py --dry-run
 4. Benchmarks the chosen config with `llama-bench` (pp2048 + tg512)
 5. Appends the result to `fit-bench-results.csv`
 
-On this laptop, `fit_bench.py` reserves `128` MiB of VRAM for non-model use. That matches the hybrid-GPU setup where the RTX 4070 Laptop dGPU stays nearly idle until workloads are launched on it.
+On this laptop, `fit_bench.py` reserves `256` MiB of VRAM for non-model use. That matches the hybrid-GPU setup where the RTX 4070 Laptop dGPU stays nearly idle until workloads are launched on it.
 
-With `--vision`, the fit-target becomes `128 + mmproj size`, accounting for the VRAM cost of loading the vision encoder on GPU.
+With `--vision`, the fit-target becomes `256 + mmproj size`, accounting for the VRAM cost of loading the vision encoder on GPU.
 
 ## Results
 
@@ -47,7 +47,7 @@ With `--vision`, the fit-target becomes `128 + mmproj size`, accounting for the 
 `generate_models_ini.py` reads the results table and `sampler_config.py`, checks which models exist on disk, and writes `~/.config/llama.cpp/models.ini`. For vision-capable models:
 
 - If vision and text configs match: adds `mmproj-auto = on` to the text section (mmproj fits without trade-offs)
-- If they differ: creates a separate `:vision` section with reduced context and a higher `fit-target` (`128 + mmproj size` in MiB)
+- If they differ: creates a separate `:vision` section with reduced context and a higher `fit-target` (`256 + mmproj size` in MiB)
 
 ## Setup
 
