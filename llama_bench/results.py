@@ -4,8 +4,8 @@ import tomllib
 from datetime import datetime, timezone
 from typing import Iterable, Mapping, MutableMapping
 
-from llama_bench.model_identity import identity_from_tag, render_model_tag
-from llama_bench.quant_order import QUANT_ORDER
+from llama_bench.model_identity import identity_from_tag, render_model_tag, result_key_from_parts
+from llama_bench.quant_order import QUANT_ORDER, UNKNOWN_QUANT_ORDER
 from llama_bench.schema_types import ModelRecord, ResultRow
 
 PACKAGE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -57,11 +57,11 @@ CSV_FIELDNAMES = [
 def load_models() -> list[ModelRecord]:
     with open(MODELS_TOML, "rb") as f:
         data = tomllib.load(f)
-    return [(m["repo"], m["quant"], m["group"], m.get("pinned", False)) for m in data.get("models", [])]
+    return [(m["repo"], m["quant"], m["group"]) for m in data.get("models", [])]
 
 
 def load_tags() -> list[str]:
-    return [render_model_tag(repo, quant) for repo, quant, _, _ in load_models()]
+    return [render_model_tag(repo, quant) for repo, quant, _ in load_models()]
 
 
 def parse_ctx(value: str | None) -> int | None:
@@ -140,7 +140,7 @@ def sort_results_file() -> None:
     def sort_key(row: ResultRow) -> tuple[tuple[int, float], str, int, int, int, int]:
         params = row.get("params", "?")
         model = row.get("model", "")
-        quant = QUANT_ORDER.get(row.get("quant", ""), 99)
+        quant = QUANT_ORDER.get(row.get("quant", ""), UNKNOWN_QUANT_ORDER)
         provider = PROVIDER_ORDER.get(row.get("provider", ""), 99)
         mode = 0 if row.get("mode") == "text" else 1
         ubatch = int(row.get("ubatch", "0"))
@@ -256,3 +256,10 @@ def get_bench_ts(tag: str, mode: str = "text", ubatch: int | None = None) -> dat
             ):
                 return parse_timestamp_utc(row.get("bench_ts", ""))
     return None
+
+
+def model_groups() -> dict[tuple[str, str, str], str]:
+    groups: dict[tuple[str, str, str], str] = {}
+    for repo, quant, group in load_models():
+        groups[result_key_from_parts(repo, quant)] = group
+    return groups

@@ -1,10 +1,13 @@
 import csv
 from pathlib import Path
+from typing import Literal
 
 from pytest import CaptureFixture, MonkeyPatch
 
 import generate_models_ini
-from llama_bench import results as bench_results
+from llama_bench.consolidation import ConfigKey, LabelledConfig, ReportEntry
+from llama_bench.results import PP_COL, TG_COL
+from llama_bench.selection import Candidate, ProfileSelection, Quality, ScoredCandidate
 
 
 def _fake_gguf_path(tag: str) -> Path:
@@ -28,287 +31,254 @@ def _parse_ini_sections(content: str) -> dict[str, dict[str, str]]:
     return sections
 
 
-def _selected(ctx: int, ubatch: int, pp: float, tg: float) -> generate_models_ini.SelectedResult:
-    return {
-        "ctx": ctx,
-        "fit_target": 128,
-        "ngl": -1,
-        "ubatch": ubatch,
-        "pp4096_tps": pp,
-        "tg128_tps": tg,
-    }
-
-
-def test_load_result_summary_reads_result_csv(tmp_path: Path) -> None:
-    results_file = tmp_path / "fit-bench-results.csv"
-    with results_file.open("w", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=bench_results.CSV_FIELDNAMES)
-        writer.writeheader()
-        writer.writerow(
-            {
-                "model": "Foo",
-                "quant": "Q4_K_M",
-                "provider": "unsloth",
-                "mode": "text",
-                "fit_target": "128",
-                "ctx": "50k",
-                "ngl": "all",
-                "ubatch": "512",
-                bench_results.PP_COL: "1000.0",
-                bench_results.TG_COL: "100.0",
-            }
-        )
-
-    parsed = generate_models_ini.load_result_summary(str(results_file))
-
-    assert parsed[("Foo", "Q4_K_M", "unsloth")].get("text") == {
-        "ctx": 50000,
-        "fit_target": 128,
-        "ngl": -1,
-        "ubatch": 512,
-        "pp4096_tps": 1000.0,
-        "tg128_tps": 100.0,
-    }
-
-
-def test_select_result_row_gpt_oss_120b_like_floor_50k_best_pp() -> None:
-    rows = [
-        _selected(50_000, 4096, 900, 100),
-        _selected(75_000, 1024, 500, 100),
-        _selected(40_000, 4096, 1200, 100),
-    ]
-
-    assert generate_models_ini.select_result_row(rows, "text") == rows[0]
-
-
-def test_select_result_row_glm_like_keeps_fast_100k_max_ctx() -> None:
-    rows = [
-        _selected(75_000, 4096, 900, 100),
-        _selected(100_000, 1024, 600, 100),
-    ]
-
-    assert generate_models_ini.select_result_row(rows, "text") == rows[1]
-
-
-def test_select_result_row_gemma_vision_like_floor_100k() -> None:
-    rows = [
-        _selected(75_000, 4096, 1200, 100),
-        _selected(125_000, 1024, 800, 100),
-    ]
-
-    assert generate_models_ini.select_result_row(rows, "vision") == rows[1]
-
-
-def test_select_result_row_qwen_text_like_floor_125k() -> None:
-    rows = [
-        _selected(100_000, 1024, 1200, 100),
-        _selected(150_000, 4096, 900, 100),
-        _selected(125_000, 1024, 800, 100),
-    ]
-
-    assert generate_models_ini.select_result_row(rows, "text") == rows[1]
-
-
-def test_generate_ini_merges_same_vision_profile_into_main_section(
-    monkeypatch: MonkeyPatch, tmp_path: Path
-) -> None:
-    output = tmp_path / "models.ini"
-    monkeypatch.setattr(generate_models_ini, "find_local_gguf_path", _fake_gguf_path)
-
-    models = [("unsloth/Qwen3.5-9B-GGUF", "Q4_K_M", "qwen3.5-9b", True)]
-    results: generate_models_ini.ParsedResults = {
-        ("Qwen3.5-9B", "Q4_K_M", "unsloth"): {
-            "text": _selected(8192, 1024, 1000, 100),
-            "vision": {
-                "ctx": 8192,
-                "fit_target": 192,
-                "ngl": -1,
-                "ubatch": 1024,
-                "pp4096_tps": 1000,
-                "tg128_tps": 100,
-            },
-        }
-    }
-
-    generate_models_ini.generate_ini(models, results, str(output), dry_run=False)
-
-    content = output.read_text()
-    sections = _parse_ini_sections(content)
-
-    assert "unsloth/Qwen3.5-9B-GGUF:Q4_K_M" in sections
-    assert "unsloth/Qwen3.5-9B-GGUF:Q4_K_M:vision" not in sections
-    section = sections["unsloth/Qwen3.5-9B-GGUF:Q4_K_M"]
-    assert section["ctx-size"] == "8192"
-    assert section["fit-target"] == "192"
-    assert section["ubatch-size"] == "1024"
-    assert section["mmproj-auto"] == "on"
-    assert section["mmproj-offload"] == "on"
-
-
-def test_generate_ini_writes_separate_vision_section_when_needed(
-    monkeypatch: MonkeyPatch, tmp_path: Path
-) -> None:
-    output = tmp_path / "models.ini"
-    monkeypatch.setattr(generate_models_ini, "find_local_gguf_path", _fake_gguf_path)
-
-    models = [("unsloth/Qwen3.5-9B-GGUF", "Q4_K_M", "qwen3.5-9b", True)]
-    results: generate_models_ini.ParsedResults = {
-        ("Qwen3.5-9B", "Q4_K_M", "unsloth"): {
-            "text": _selected(8192, 1024, 1000, 100),
-            "vision": {
-                "ctx": 4096,
-                "fit_target": 192,
-                "ngl": 72,
-                "ubatch": 8192,
-                "pp4096_tps": 1000,
-                "tg128_tps": 100,
-            },
-        }
-    }
-
-    generate_models_ini.generate_ini(models, results, str(output), dry_run=False)
-
-    content = output.read_text()
-    sections = _parse_ini_sections(content)
-
-    text_section = sections["unsloth/Qwen3.5-9B-GGUF:Q4_K_M"]
-    vision_section = sections["unsloth/Qwen3.5-9B-GGUF:Q4_K_M:vision"]
-    assert text_section["ctx-size"] == "8192"
-    assert text_section["fit-target"] == "128"
-    assert text_section["ubatch-size"] == "1024"
-    assert text_section["batch-size"] == "4096"
-    assert "mmproj-auto" not in text_section
-    assert vision_section["ctx-size"] == "4096"
-    assert vision_section["fit-target"] == "192"
-    assert vision_section["ubatch-size"] == "8192"
-    assert vision_section["batch-size"] == "32768"
-    assert vision_section["mmproj-auto"] == "on"
-
-
-def test_generate_ini_writes_section_local_text_only_values(
-    monkeypatch: MonkeyPatch, tmp_path: Path
-) -> None:
-    output = tmp_path / "models.ini"
-    monkeypatch.setattr(generate_models_ini, "find_local_gguf_path", _fake_gguf_path)
-    monkeypatch.setattr(generate_models_ini, "SAMPLER_CONFIG", {"family": {"temp": "0.7"}})
-    models = [("unsloth/TextOnly-GGUF", "Q4_K_M", "family", True)]
-    results: generate_models_ini.ParsedResults = {
-        ("TextOnly", "Q4_K_M", "unsloth"): {"text": _selected(4096, 512, 1000, 100)}
-    }
-
-    generate_models_ini.generate_ini(models, results, str(output), dry_run=False)
-
-    sections = _parse_ini_sections(output.read_text())
-    section = sections["unsloth/TextOnly-GGUF:Q4_K_M"]
-    assert section["ctx-size"] == "4096"
-    assert section["fit-target"] == "128"
-    assert section["ubatch-size"] == "512"
-    assert section["batch-size"] == "2048"
-    assert section["temp"] == "0.7"
-    assert "mmproj-auto" not in section
-    assert "unsloth/TextOnly-GGUF:Q4_K_M:vision" not in sections
-
-
-def test_generate_ini_suppresses_sampler_ubatch_when_scan_has_ubatch(
-    monkeypatch: MonkeyPatch, tmp_path: Path
-) -> None:
-    output = tmp_path / "models.ini"
-    monkeypatch.setattr(generate_models_ini, "find_local_gguf_path", _fake_gguf_path)
-    monkeypatch.setattr(
-        generate_models_ini,
-        "SAMPLER_CONFIG",
-        {"family": {"ubatch-size": "128", "temp": "0.7"}},
+def _candidate(
+    *,
+    group: str = "foo-group",
+    model: str = "Foo",
+    quant: str = "Q4_K_M",
+    provider: str = "unsloth",
+    mode: Literal["text", "vision"] = "text",
+    ctx: int = 128_000,
+    ubatch: int = 512,
+    pp_tps: float = 100.0,
+    tg_tps: float = 20.0,
+) -> Candidate:
+    return Candidate(
+        group=group,
+        model=model,
+        quant=quant,
+        provider=provider,
+        mode=mode,
+        ctx=ctx,
+        ubatch=ubatch,
+        pp_tps=pp_tps,
+        tg_tps=tg_tps,
+        params=8_000_000_000,
+        size_gib=4.0,
+        kld=None,
     )
-    models = [("unsloth/Foo-GGUF", "Q4_K_M", "family", True)]
-    results: generate_models_ini.ParsedResults = {
-        ("Foo", "Q4_K_M", "unsloth"): {"text": _selected(4096, 1024, 1000, 100)}
+
+
+def _scored(candidate: Candidate, quality_score: float = 0.75) -> ScoredCandidate:
+    return ScoredCandidate(
+        candidate=candidate,
+        quality=Quality(score=quality_score, source="quant-proxy", kld=None),
+        score=0.8,
+    )
+
+
+def _selection(
+    group: str = "foo-group",
+    profile: str = "agentic-coding",
+    scored: ScoredCandidate | None = None,
+) -> ProfileSelection:
+    return ProfileSelection(
+        group=group,
+        profile=profile,
+        recommendation=scored,
+        alternatives={},
+        skipped_reason=None if scored else "no results",
+    )
+
+
+def _labelled_config(
+    *,
+    label: str = "foo-group-agentic",
+    description: str = "Agentic coding default. text, ctx 128k, pp 100, tg 20.",
+    group: str = "foo-group",
+    provider: str = "unsloth",
+    quant: str = "Q4_K_M",
+    mode: Literal["text", "vision"] = "text",
+    ubatch: int = 512,
+    ctx: int = 128_000,
+    pp_tps: float = 100.0,
+    tg_tps: float = 20.0,
+    model: str = "Foo",
+) -> LabelledConfig:
+    cand = _candidate(
+        group=group, model=model, quant=quant, provider=provider, mode=mode,
+        ctx=ctx, ubatch=ubatch, pp_tps=pp_tps, tg_tps=tg_tps,
+    )
+    scored = _scored(cand)
+    sel = _selection(group=group, scored=scored)
+    entry = ReportEntry(sel, "recommended", scored)
+    key: ConfigKey = (group, provider, quant, mode, ubatch, ctx, pp_tps, tg_tps)
+    return LabelledConfig(label=label, description=description, key=key, entries=(entry,))
+
+
+def test_build_ini_sections_emits_section_per_labelled_config(monkeypatch: MonkeyPatch) -> None:
+    monkeypatch.setattr(generate_models_ini, "SAMPLER_CONFIG", {"foo-group": {"temp": "0.7"}})
+    configs = [
+        _labelled_config(
+            label="foo-group-agentic",
+            group="foo-group",
+            quant="Q4_K_M",
+            ubatch=512,
+            ctx=128_000,
+        ),
+    ]
+    fit_lookup: generate_models_ini.FitLookup = {
+        ("Foo", "Q4_K_M", "unsloth", "text", 512, 128_000): 128,
     }
-
-    generate_models_ini.generate_ini(models, results, str(output), dry_run=False)
-
-    section = _parse_ini_sections(output.read_text())["unsloth/Foo-GGUF:Q4_K_M"]
-    assert section["ubatch-size"] == "1024"
-    assert section["temp"] == "0.7"
-
-
-def test_build_ini_sections_plans_sections(monkeypatch: MonkeyPatch) -> None:
-    monkeypatch.setattr(generate_models_ini, "SAMPLER_CONFIG", {"family": {"temp": "0.7"}})
-    models = [("unsloth/Foo-GGUF", "Q4_K_M", "family", True)]
-    results: generate_models_ini.ParsedResults = {
-        ("Foo", "Q4_K_M", "unsloth"): {"text": _selected(4096, 512, 1000, 100)}
+    repo_lookup: dict[tuple[str, str, str], str] = {
+        ("Foo", "Q4_K_M", "unsloth"): "unsloth/Foo-GGUF",
     }
     warnings: list[str] = []
 
     sections = generate_models_ini.build_ini_sections(
-        models,
-        results,
+        configs, fit_lookup, repo_lookup,
         gguf_exists_fn=lambda _tag: Path("/tmp/model.gguf"),
         warn=warnings.append,
     )
 
     assert warnings == []
-    assert sections == [
+    assert len(sections) == 1
+    assert sections[0]["name"] == "foo-group-agentic"
+    assert sections[0]["comment"] != ""
+    props = dict(sections[0]["props"])
+    assert props["hf"] == "unsloth/Foo-GGUF:Q4_K_M"
+    assert props["ctx-size"] == "128000"
+    assert props["fit-target"] == "128"
+    assert props["ubatch-size"] == "512"
+    assert props["batch-size"] == str(generate_models_ini._server_batch_size(512))
+    assert props["temp"] == "0.7"
+
+
+def test_build_ini_sections_adds_vision_props_for_vision_mode(monkeypatch: MonkeyPatch) -> None:
+    monkeypatch.setattr(generate_models_ini, "SAMPLER_CONFIG", {})
+    configs = [
+        _labelled_config(
+            label="foo-group-vision",
+            group="foo-group",
+            mode="vision",
+            ctx=64_000,
+        ),
+    ]
+    fit_lookup: generate_models_ini.FitLookup = {
+        ("Foo", "Q4_K_M", "unsloth", "vision", 512, 64_000): 192,
+    }
+    repo_lookup: dict[tuple[str, str, str], str] = {
+        ("Foo", "Q4_K_M", "unsloth"): "unsloth/Foo-GGUF",
+    }
+
+    sections = generate_models_ini.build_ini_sections(
+        configs, fit_lookup, repo_lookup,
+        gguf_exists_fn=lambda _tag: Path("/tmp/model.gguf"),
+    )
+
+    assert len(sections) == 1
+    props = dict(sections[0]["props"])
+    assert props["mmproj-auto"] == "on"
+    assert props["mmproj-offload"] == "on"
+    assert props["fit-target"] == "192"
+
+
+def test_build_ini_sections_text_mode_has_no_mmproj(monkeypatch: MonkeyPatch) -> None:
+    monkeypatch.setattr(generate_models_ini, "SAMPLER_CONFIG", {})
+    configs = [
+        _labelled_config(label="foo-group-chat", mode="text"),
+    ]
+    fit_lookup: generate_models_ini.FitLookup = {
+        ("Foo", "Q4_K_M", "unsloth", "text", 512, 128_000): 128,
+    }
+    repo_lookup: dict[tuple[str, str, str], str] = {
+        ("Foo", "Q4_K_M", "unsloth"): "unsloth/Foo-GGUF",
+    }
+
+    sections = generate_models_ini.build_ini_sections(
+        configs, fit_lookup, repo_lookup,
+        gguf_exists_fn=lambda _tag: Path("/tmp/model.gguf"),
+    )
+
+    props = dict(sections[0]["props"])
+    assert "mmproj-auto" not in props
+    assert "mmproj-offload" not in props
+
+
+def test_build_ini_sections_warns_on_missing_repo() -> None:
+    configs = [
+        _labelled_config(model="Missing", quant="Q5_K_M", provider="unknown"),
+    ]
+    fit_lookup: generate_models_ini.FitLookup = {}
+    repo_lookup: dict[tuple[str, str, str], str] = {}
+    warnings: list[str] = []
+
+    sections = generate_models_ini.build_ini_sections(
+        configs, fit_lookup, repo_lookup,
+        gguf_exists_fn=lambda _tag: Path("/tmp/model.gguf"),
+        warn=warnings.append,
+    )
+
+    assert sections == []
+    assert any("no repo" in w for w in warnings)
+
+
+def test_build_ini_sections_warns_on_missing_gguf() -> None:
+    configs = [
+        _labelled_config(),
+    ]
+    fit_lookup: generate_models_ini.FitLookup = {
+        ("Foo", "Q4_K_M", "unsloth", "text", 512, 128_000): 128,
+    }
+    repo_lookup: dict[tuple[str, str, str], str] = {
+        ("Foo", "Q4_K_M", "unsloth"): "unsloth/Foo-GGUF",
+    }
+    warnings: list[str] = []
+
+    sections = generate_models_ini.build_ini_sections(
+        configs, fit_lookup, repo_lookup,
+        gguf_exists_fn=lambda _tag: None,
+        warn=warnings.append,
+    )
+
+    assert sections == []
+    assert any("not found on disk" in w for w in warnings)
+
+
+def test_render_ini_includes_comments_and_sections() -> None:
+    sections: list[generate_models_ini.IniSection] = [
         {
-            "name": "unsloth/Foo-GGUF:Q4_K_M",
-            "props": [
-                ("hf", "unsloth/Foo-GGUF:Q4_K_M"),
-                ("ctx-size", "4096"),
-                ("fit-target", "128"),
-                ("ubatch-size", "512"),
-                ("batch-size", "2048"),
-                ("temp", "0.7"),
-            ],
+            "name": "foo-group-agentic",
+            "props": [("hf", "unsloth/Foo-GGUF:Q4_K_M"), ("ctx-size", "128000")],
+            "comment": "Agentic coding default. text, ctx 128k, pp 100, tg 20.",
         },
     ]
 
+    content = generate_models_ini.render_ini(sections)
 
-def test_render_ini_renders_sections() -> None:
-    content = generate_models_ini.render_ini(
-        [
-            {
-                "name": "unsloth/Foo-GGUF:Q4_K_M",
-                "props": [("hf", "unsloth/Foo-GGUF:Q4_K_M"), ("ctx-size", "4096")],
-            },
-        ]
-    )
-
-    assert content == (
-        "version = 1\n"
-        "\n"
-        "[*]\n"
-        "fit = on\n"
-        "fit-ctx = 5000\n"
-        "flash-attn = on\n"
-        "parallel = 4\n"
-        "batch-size = 2048\n"
-        "\n"
-        "[unsloth/Foo-GGUF:Q4_K_M]\n"
-        "hf = unsloth/Foo-GGUF:Q4_K_M\n"
-        "ctx-size = 4096\n"
-    )
+    assert "version = 1" in content
+    assert "; Agentic coding default." in content
+    assert "[foo-group-agentic]" in content
+    assert "hf = unsloth/Foo-GGUF:Q4_K_M" in content
+    assert "ctx-size = 128000" in content
 
 
-def test_batch_size_is_server_parallel_times_ubatch(
-    monkeypatch: MonkeyPatch, tmp_path: Path
-) -> None:
-    output = tmp_path / "models.ini"
-    monkeypatch.setattr(generate_models_ini, "find_local_gguf_path", _fake_gguf_path)
-    monkeypatch.setattr(generate_models_ini, "SAMPLER_CONFIG", {})
-    models = [("unsloth/MoE-GGUF", "Q4_K_M", "moe", True)]
-    results: generate_models_ini.ParsedResults = {
-        ("MoE", "Q4_K_M", "unsloth"): {"text": _selected(4096, 2048, 1000, 100)}
-    }
+def test_render_ini_omits_empty_comment() -> None:
+    sections: list[generate_models_ini.IniSection] = [
+        {
+            "name": "test",
+            "props": [("hf", "x:y")],
+            "comment": "",
+        },
+    ]
 
-    generate_models_ini.generate_ini(models, results, str(output), dry_run=False)
+    content = generate_models_ini.render_ini(sections)
 
-    section = _parse_ini_sections(output.read_text())["unsloth/MoE-GGUF:Q4_K_M"]
-    assert section["ubatch-size"] == "2048"
-    assert section["batch-size"] == str(generate_models_ini.SERVER_PARALLEL * 2048)
+    assert ";" not in content.split("[test]")[0].split("\n")[-1]
 
 
-def test_format_sampler_settings_skips_keys(
-    monkeypatch: MonkeyPatch,
-) -> None:
+def test_render_ini_header() -> None:
+    content = generate_models_ini.render_ini([])
+
+    assert content.startswith("version = 1\n")
+    assert "[*]" in content
+    assert "fit = on" in content
+    assert "flash-attn = on" in content
+    assert f"parallel = {generate_models_ini.SERVER_PARALLEL}" in content
+    assert f"batch-size = {generate_models_ini._server_batch_size(512)}" in content
+
+
+def test_format_sampler_settings_skips_keys(monkeypatch: MonkeyPatch) -> None:
     monkeypatch.setattr(
         generate_models_ini,
         "SAMPLER_CONFIG",
@@ -316,41 +286,185 @@ def test_format_sampler_settings_skips_keys(
             "family": {
                 "temperature": "0.7",
                 "ubatch-size": "512",
-                "chat-template-kwargs": '{"enable_thinking": true, "low_effort": false}',
+                "reasoning": "on",
+                "chat-template-kwargs": '{"low_effort": false}',
             }
         },
     )
 
     assert generate_models_ini.format_sampler_settings("family", skip_keys={"temperature"}) == [
         ("ubatch-size", "512"),
-        ("chat-template-kwargs", '{"enable_thinking": true, "low_effort": false}'),
+        ("reasoning", "on"),
+        ("chat-template-kwargs", '{"low_effort": false}'),
     ]
 
 
-def test_generate_ini_dry_run_skips_unpinned_missing_and_unscanned_models(
-    monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
-) -> None:
-    found = {"unsloth/Foo-GGUF:Q4_K_M", "unsloth/Bar-GGUF:Q4_K_M"}
+def test_load_fit_lookup_reads_results_csv(tmp_path: Path) -> None:
+    results_file = tmp_path / "fit-bench-results.csv"
+    with results_file.open("w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=[
+            "model", "quant", "provider", "mode", "fit_target", "ctx", "ubatch",
+            PP_COL, TG_COL,
+        ])
+        writer.writeheader()
+        writer.writerow({
+            "model": "Foo", "quant": "Q4_K_M", "provider": "unsloth",
+            "mode": "text", "fit_target": "128", "ctx": "50k", "ubatch": "512",
+            PP_COL: "1000.0", TG_COL: "100.0",
+        })
 
-    def fake_find_local_gguf_path(tag: str) -> Path | None:
-        return Path("/tmp/model.gguf") if tag in found else None
+    lookup = generate_models_ini.load_fit_lookup(str(results_file))
 
-    monkeypatch.setattr(generate_models_ini, "find_local_gguf_path", fake_find_local_gguf_path)
-    monkeypatch.setattr(generate_models_ini, "SAMPLER_CONFIG", {"foo": {"temperature": "0.6"}})
-    models = [
-        ("unsloth/Foo-GGUF", "Q4_K_M", "foo", True),
-        ("unsloth/Bar-GGUF", "Q4_K_M", "foo", True),
-        ("unsloth/Baz-GGUF", "Q4_K_M", "foo", False),
+    assert lookup[("Foo", "Q4_K_M", "unsloth", "text", 512, 50000)] == 128
+
+
+def test_batch_size_uses_server_batch_rule(monkeypatch: MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(generate_models_ini, "SAMPLER_CONFIG", {})
+    configs = [
+        _labelled_config(label="moe-group-chat", group="moe", ubatch=2048),
     ]
-    results: generate_models_ini.ParsedResults = {
-        ("Foo", "Q4_K_M", "unsloth"): {"text": _selected(4096, 512, 1000, 100)}
+    fit_lookup: generate_models_ini.FitLookup = {
+        ("Foo", "Q4_K_M", "unsloth", "text", 2048, 128_000): 128,
+    }
+    repo_lookup: dict[tuple[str, str, str], str] = {
+        ("Foo", "Q4_K_M", "unsloth"): "unsloth/Foo-GGUF",
     }
 
-    generate_models_ini.generate_ini(models, results, "ignored.ini", dry_run=True)
+    sections = generate_models_ini.build_ini_sections(
+        configs, fit_lookup, repo_lookup,
+        gguf_exists_fn=lambda _tag: Path("/tmp/model.gguf"),
+    )
+
+    props = dict(sections[0]["props"])
+    assert props["ubatch-size"] == "2048"
+    assert props["batch-size"] == str(generate_models_ini._server_batch_size(2048))
+
+
+def test_generate_ini_dry_run_prints_content(
+    monkeypatch: MonkeyPatch, capsys: CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(generate_models_ini, "SAMPLER_CONFIG", {})
+    monkeypatch.setattr(generate_models_ini, "find_local_gguf_path", _fake_gguf_path)
+    configs = [
+        _labelled_config(label="foo-group-agentic", quant="Q4_K_M", ubatch=512, ctx=128_000),
+    ]
+    fit_lookup: generate_models_ini.FitLookup = {
+        ("Foo", "Q4_K_M", "unsloth", "text", 512, 128_000): 128,
+    }
+    repo_lookup: dict[tuple[str, str, str], str] = {
+        ("Foo", "Q4_K_M", "unsloth"): "unsloth/Foo-GGUF",
+    }
+
+    generate_models_ini.generate_ini(
+        configs, fit_lookup, repo_lookup, "ignored.ini", dry_run=True
+    )
 
     captured = capsys.readouterr()
     assert "version = 1" in captured.out
-    assert "[unsloth/Foo-GGUF:Q4_K_M]" in captured.out
-    assert "temperature = 0.6" in captured.out
-    assert "unsloth/Bar-GGUF:Q4_K_M has no benchmark results" in captured.err
-    assert "Baz" not in captured.out
+    assert "[foo-group-agentic]" in captured.out
+    assert "hf = unsloth/Foo-GGUF:Q4_K_M" in captured.out
+
+
+def test_generate_ini_writes_file(
+    monkeypatch: MonkeyPatch, tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(generate_models_ini, "SAMPLER_CONFIG", {})
+    monkeypatch.setattr(generate_models_ini, "find_local_gguf_path", _fake_gguf_path)
+    output = tmp_path / "models.ini"
+    configs = [
+        _labelled_config(label="foo-group-agentic", quant="Q4_K_M", ubatch=512, ctx=128_000),
+    ]
+    fit_lookup: generate_models_ini.FitLookup = {
+        ("Foo", "Q4_K_M", "unsloth", "text", 512, 128_000): 128,
+    }
+    repo_lookup: dict[tuple[str, str, str], str] = {
+        ("Foo", "Q4_K_M", "unsloth"): "unsloth/Foo-GGUF",
+    }
+
+    generate_models_ini.generate_ini(
+        configs, fit_lookup, repo_lookup, str(output), dry_run=False
+    )
+
+    content = output.read_text()
+    sections = _parse_ini_sections(content)
+    assert "foo-group-agentic" in sections
+    assert sections["foo-group-agentic"]["hf"] == "unsloth/Foo-GGUF:Q4_K_M"
+
+
+def test_fit_target_missing_gracefully_omitted(monkeypatch: MonkeyPatch) -> None:
+    monkeypatch.setattr(generate_models_ini, "SAMPLER_CONFIG", {})
+    configs = [
+        _labelled_config(label="foo-group-chat", ctx=64_000),
+    ]
+    fit_lookup: generate_models_ini.FitLookup = {}
+    repo_lookup: dict[tuple[str, str, str], str] = {
+        ("Foo", "Q4_K_M", "unsloth"): "unsloth/Foo-GGUF",
+    }
+
+    sections = generate_models_ini.build_ini_sections(
+        configs, fit_lookup, repo_lookup,
+        gguf_exists_fn=lambda _tag: Path("/tmp/model.gguf"),
+    )
+
+    props = dict(sections[0]["props"])
+    assert "fit-target" not in props
+    assert props["ctx-size"] == "64000"
+
+
+def test_vision_merged_into_text_section_when_config_matches(monkeypatch: MonkeyPatch) -> None:
+    monkeypatch.setattr(generate_models_ini, "SAMPLER_CONFIG", {})
+    text_config = _labelled_config(
+        label="foo-group-agentic", mode="text", ubatch=512, ctx=128_000,
+    )
+    vision_config = _labelled_config(
+        label="foo-group-vision", mode="vision", ubatch=512, ctx=128_000,
+    )
+    fit_lookup: generate_models_ini.FitLookup = {
+        ("Foo", "Q4_K_M", "unsloth", "text", 512, 128_000): 256,
+        ("Foo", "Q4_K_M", "unsloth", "vision", 512, 128_000): 453,
+    }
+    repo_lookup: dict[tuple[str, str, str], str] = {
+        ("Foo", "Q4_K_M", "unsloth"): "unsloth/Foo-GGUF",
+    }
+
+    sections = generate_models_ini.build_ini_sections(
+        [text_config, vision_config], fit_lookup, repo_lookup,
+        gguf_exists_fn=lambda _tag: Path("/tmp/model.gguf"),
+    )
+
+    assert len(sections) == 1
+    assert sections[0]["name"] == "foo-group-agentic"
+    props = dict(sections[0]["props"])
+    assert props["fit-target"] == "453"
+    assert props["mmproj-auto"] == "on"
+    assert props["mmproj-offload"] == "on"
+
+
+def test_vision_section_kept_separate_when_config_differs(monkeypatch: MonkeyPatch) -> None:
+    monkeypatch.setattr(generate_models_ini, "SAMPLER_CONFIG", {})
+    text_config = _labelled_config(
+        label="foo-group-agentic", mode="text", ubatch=2048, ctx=100_000,
+    )
+    vision_config = _labelled_config(
+        label="foo-group-vision", mode="vision", ubatch=512, ctx=100_000,
+    )
+    fit_lookup: generate_models_ini.FitLookup = {
+        ("Foo", "Q4_K_M", "unsloth", "text", 2048, 100_000): 256,
+        ("Foo", "Q4_K_M", "unsloth", "vision", 512, 100_000): 453,
+    }
+    repo_lookup: dict[tuple[str, str, str], str] = {
+        ("Foo", "Q4_K_M", "unsloth"): "unsloth/Foo-GGUF",
+    }
+
+    sections = generate_models_ini.build_ini_sections(
+        [text_config, vision_config], fit_lookup, repo_lookup,
+        gguf_exists_fn=lambda _tag: Path("/tmp/model.gguf"),
+    )
+
+    assert len(sections) == 2
+    text_props = dict(sections[0]["props"])
+    vision_props = dict(sections[1]["props"])
+    assert "mmproj-auto" not in text_props
+    assert vision_props["mmproj-auto"] == "on"
+    assert text_props["ubatch-size"] == "2048"
+    assert vision_props["ubatch-size"] == "512"

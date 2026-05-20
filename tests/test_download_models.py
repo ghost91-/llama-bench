@@ -149,9 +149,9 @@ def test_main_lists_groups(monkeypatch: MonkeyPatch, capsys: CaptureFixture[str]
         download_models,
         "load_models",
         lambda: [
-            ("repo/a", "Q4_K_M", "qwen", False),
-            ("repo/b", "Q5_K_M", "qwen", False),
-            ("repo/c", "Q4_K_M", "gemma", False),
+            ("repo/a", "Q4_K_M", "qwen"),
+            ("repo/b", "Q5_K_M", "qwen"),
+            ("repo/c", "Q4_K_M", "gemma"),
         ],
     )
     monkeypatch.setattr(
@@ -177,9 +177,9 @@ def test_main_dry_run_filters_groups_and_counts_missing(
         download_models,
         "load_models",
         lambda: [
-            ("repo/a", "Q4_K_M", "qwen3", False),
-            ("repo/b", "Q5_K_M", "gemma", False),
-            ("repo/c", "Q8_0", "qwen3", False),
+            ("repo/a", "Q4_K_M", "qwen3"),
+            ("repo/b", "Q5_K_M", "gemma"),
+            ("repo/c", "Q8_0", "qwen3"),
         ],
     )
     monkeypatch.setattr(download_models, "evict_old_revisions", lambda: 0)
@@ -206,9 +206,9 @@ def test_main_groups_downloads_by_repo_and_reports_failures(
         download_models,
         "load_models",
         lambda: [
-            ("repo/a", "Q4_K_M", "qwen", False),
-            ("repo/a", "Q5_K_M", "qwen", False),
-            ("repo/b", "Q4_K_M", "qwen", False),
+            ("repo/a", "Q4_K_M", "qwen"),
+            ("repo/a", "Q5_K_M", "qwen"),
+            ("repo/b", "Q4_K_M", "qwen"),
         ],
     )
     monkeypatch.setattr(download_models, "evict_old_revisions", lambda: 0)
@@ -247,8 +247,8 @@ def test_main_repo_list_failure_continues(
         download_models,
         "load_models",
         lambda: [
-            ("repo/bad", "Q4_K_M", "qwen", False),
-            ("repo/good", "Q4_K_M", "qwen", False),
+            ("repo/bad", "Q4_K_M", "qwen"),
+            ("repo/good", "Q4_K_M", "qwen"),
         ],
     )
     monkeypatch.setattr(download_models, "evict_old_revisions", lambda: 0)
@@ -275,8 +275,8 @@ def test_main_sorts_and_deduplicates_allow_patterns(monkeypatch: MonkeyPatch) ->
         download_models,
         "load_models",
         lambda: [
-            ("repo/a", "Q4_K_M", "qwen", False),
-            ("repo/a", "Q4_K_M", "qwen", False),
+            ("repo/a", "Q4_K_M", "qwen"),
+            ("repo/a", "Q4_K_M", "qwen"),
         ],
     )
     monkeypatch.setattr(download_models, "evict_old_revisions", lambda: 0)
@@ -312,9 +312,9 @@ def test_main_accepts_multiple_group_prefixes(
         download_models,
         "load_models",
         lambda: [
-            ("repo/a", "Q4_K_M", "qwen3.5", False),
-            ("repo/b", "Q4_K_M", "gemma-4", False),
-            ("repo/c", "Q4_K_M", "qwen2", False),
+            ("repo/a", "Q4_K_M", "qwen3.5"),
+            ("repo/b", "Q4_K_M", "gemma-4"),
+            ("repo/c", "Q4_K_M", "qwen2"),
         ],
     )
     monkeypatch.setattr(download_models, "evict_old_revisions", lambda: 0)
@@ -338,7 +338,7 @@ def test_main_no_repo_tasks_prints_final_counts(
     monkeypatch.setattr(
         download_models,
         "load_models",
-        lambda: [("repo/a", "Q4_K_M", "qwen", False)],
+        lambda: [("repo/a", "Q4_K_M", "qwen")],
     )
     monkeypatch.setattr(download_models, "evict_old_revisions", lambda: 0)
     monkeypatch.setattr(download_models, "list_repo_files", no_repo_files)
@@ -359,7 +359,7 @@ def test_main_evicts_before_and_after_download(
     monkeypatch.setattr(
         download_models,
         "load_models",
-        lambda: [("repo/a", "Q4_K_M", "qwen", False)],
+        lambda: [("repo/a", "Q4_K_M", "qwen")],
     )
     monkeypatch.setattr(download_models, "evict_old_revisions", lambda: evictions.pop(0))
     monkeypatch.setattr(download_models, "list_repo_files", q4_repo_files)

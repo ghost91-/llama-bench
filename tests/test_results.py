@@ -188,7 +188,6 @@ def test_load_models_and_tags(monkeypatch: MonkeyPatch, tmp_path: Path) -> None:
 repo = "unsloth/Foo-GGUF"
 quant = "Q4_K_M"
 group = "foo"
-pinned = true
 
 [[models]]
 repo = "bartowski/Bar-GGUF"
@@ -200,13 +199,21 @@ group = "bar"
     monkeypatch.setattr(results, "MODELS_TOML", str(models_file))
 
     assert results.load_models() == [
-        ("unsloth/Foo-GGUF", "Q4_K_M", "foo", True),
-        ("bartowski/Bar-GGUF", "Q5_K_M", "bar", False),
+        ("unsloth/Foo-GGUF", "Q4_K_M", "foo"),
+        ("bartowski/Bar-GGUF", "Q5_K_M", "bar"),
     ]
     assert results.load_tags() == ["unsloth/Foo-GGUF:Q4_K_M", "bartowski/Bar-GGUF:Q5_K_M"]
 
 
-def test_sort_results_file_orders_by_params_model_quant_provider_mode_and_ubatch(
+def test_unknown_quant_sorts_after_all_known_quants() -> None:
+    from llama_bench.quant_order import QUANT_ORDER, UNKNOWN_QUANT_ORDER
+
+    assert UNKNOWN_QUANT_ORDER > max(QUANT_ORDER.values())
+    assert QUANT_ORDER.get("Q8_K_XL", UNKNOWN_QUANT_ORDER) < UNKNOWN_QUANT_ORDER
+    assert QUANT_ORDER.get("TOTALLY_UNKNOWN", UNKNOWN_QUANT_ORDER) == UNKNOWN_QUANT_ORDER
+
+
+def test_sort_results_file_places_unknown_quant_last(
     monkeypatch: MonkeyPatch, tmp_path: Path
 ) -> None:
     results_file = tmp_path / "fit-bench-results.csv"

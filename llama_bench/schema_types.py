@@ -2,7 +2,7 @@ from collections.abc import Collection
 from pathlib import Path
 from typing import Literal, Protocol, TypedDict, TypeAlias
 
-ModelRecord: TypeAlias = tuple[str, str, str, bool]
+ModelRecord: TypeAlias = tuple[str, str, str]
 ResultRow: TypeAlias = dict[str, str]
 
 

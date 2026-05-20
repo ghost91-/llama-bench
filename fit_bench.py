@@ -1512,7 +1512,7 @@ def main() -> int:
             models = [m for m in models if m[0].split("/")[0] in args.provider]
         if args.group:
             models = [m for m in models if m[2] in args.group]
-        tags = [render_model_tag(repo, quant) for repo, quant, _, _ in models]
+        tags = [render_model_tag(repo, quant) for repo, quant, _ in models]
 
     if not tags:
         parser.error("no models matched — provide tags or use --provider/--group filters")

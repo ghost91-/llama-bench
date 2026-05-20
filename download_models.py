@@ -116,7 +116,7 @@ def main() -> None:
     models = load_models()
 
     if args.list_groups:
-        groups = Counter(g for _, _, g, _ in models)
+        groups = Counter(g for _, _, g in models)
         print("Available groups:")
         for g, count in sorted(groups.items()):
             print(f"  {g} ({count} variants)")
@@ -138,7 +138,7 @@ def main() -> None:
     repo_files_cache: dict[str, list[str] | None] = {}
 
     repo_tasks: dict[str, RepoDownloadTask] = {}
-    for i, (repo_id, tag, group, _pinned) in enumerate(models, 1):
+    for i, (repo_id, tag, group) in enumerate(models, 1):
         if args.group and not any(group.startswith(g) for g in args.group):
             stats["skipped"] += 1
             continue

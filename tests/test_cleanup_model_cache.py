@@ -59,7 +59,7 @@ def test_format_size_and_desired_tags() -> None:
     assert cleanup_model_cache.format_size(1024) == "1.0 KiB"
     assert cleanup_model_cache.format_size(2 * 1024**3) == "2.0 GiB"
     assert cleanup_model_cache.build_desired_tags(
-        [("repo/a", "Q4_K_M", "group", False), ("repo/a", "Q5_K_M", "group", True)]
+        [("repo/a", "Q4_K_M", "group"), ("repo/a", "Q5_K_M", "group")]
     ) == {"repo/a": ["Q4_K_M", "Q5_K_M"]}
 
 
@@ -159,7 +159,7 @@ def test_main_dry_run_reports_without_deleting(
     monkeypatch: MonkeyPatch, tmp_path: Path, capsys: CaptureFixture[str]
 ) -> None:
     cache_info, extra_file, extra_blob, _wanted_blob = _make_cache_for_main(tmp_path)
-    monkeypatch.setattr(cleanup_model_cache, "load_models", lambda: [("repo/a", "Q4_K_M", "g", False)])
+    monkeypatch.setattr(cleanup_model_cache, "load_models", lambda: [("repo/a", "Q4_K_M", "g")])
     monkeypatch.setattr(cleanup_model_cache, "scan_cache_dir", lambda: cache_info)
     monkeypatch.setattr("sys.argv", ["cleanup_model_cache.py", "--dry-run"])
 
@@ -178,7 +178,7 @@ def test_main_deletes_extra_files_and_unreferenced_blobs(
     monkeypatch: MonkeyPatch, tmp_path: Path, capsys: CaptureFixture[str]
 ) -> None:
     cache_info, extra_file, extra_blob, wanted_blob = _make_cache_for_main(tmp_path)
-    monkeypatch.setattr(cleanup_model_cache, "load_models", lambda: [("repo/a", "Q4_K_M", "g", False)])
+    monkeypatch.setattr(cleanup_model_cache, "load_models", lambda: [("repo/a", "Q4_K_M", "g")])
     monkeypatch.setattr(cleanup_model_cache, "scan_cache_dir", lambda: cache_info)
     monkeypatch.setattr("sys.argv", ["cleanup_model_cache.py"])
 
@@ -217,7 +217,7 @@ def test_main_reports_nothing_to_delete(
             )
         ]
     )
-    monkeypatch.setattr(cleanup_model_cache, "load_models", lambda: [("repo/a", "Q4_K_M", "g", False)])
+    monkeypatch.setattr(cleanup_model_cache, "load_models", lambda: [("repo/a", "Q4_K_M", "g")])
     monkeypatch.setattr(cleanup_model_cache, "scan_cache_dir", lambda: cache_info)
     monkeypatch.setattr("sys.argv", ["cleanup_model_cache.py"])
 
@@ -251,7 +251,7 @@ def test_main_ignores_non_model_repos_and_deletes_unlisted_model_repos(
         ]
     )
 
-    def load_no_models() -> list[tuple[str, str, str, bool]]:
+    def load_no_models() -> list[tuple[str, str, str]]:
         return []
 
     monkeypatch.setattr(cleanup_model_cache, "load_models", load_no_models)
@@ -296,7 +296,7 @@ def test_main_deletes_stale_ggufs_when_listed_repo_has_no_matching_quant(
             )
         ]
     )
-    monkeypatch.setattr(cleanup_model_cache, "load_models", lambda: [("repo/a", "Q4_K_M", "g", False)])
+    monkeypatch.setattr(cleanup_model_cache, "load_models", lambda: [("repo/a", "Q4_K_M", "g")])
     monkeypatch.setattr(cleanup_model_cache, "scan_cache_dir", lambda: cache_info)
     monkeypatch.setattr("sys.argv", ["cleanup_model_cache.py"])
 
@@ -344,7 +344,7 @@ def test_main_deletes_stale_mmproj_and_retains_selected_mmproj(
             )
         ]
     )
-    monkeypatch.setattr(cleanup_model_cache, "load_models", lambda: [("repo/a", "Q4_K_M", "g", False)])
+    monkeypatch.setattr(cleanup_model_cache, "load_models", lambda: [("repo/a", "Q4_K_M", "g")])
     monkeypatch.setattr(cleanup_model_cache, "scan_cache_dir", lambda: cache_info)
     monkeypatch.setattr("sys.argv", ["cleanup_model_cache.py"])
 
@@ -385,7 +385,7 @@ def test_main_skips_duplicate_file_paths(
             )
         ]
     )
-    monkeypatch.setattr(cleanup_model_cache, "load_models", lambda: [("repo/a", "Q4_K_M", "g", False)])
+    monkeypatch.setattr(cleanup_model_cache, "load_models", lambda: [("repo/a", "Q4_K_M", "g")])
     monkeypatch.setattr(cleanup_model_cache, "scan_cache_dir", lambda: cache_info)
     monkeypatch.setattr("sys.argv", ["cleanup_model_cache.py"])
 
@@ -421,7 +421,7 @@ def test_main_unlinks_dangling_symlink(
             )
         ]
     )
-    monkeypatch.setattr(cleanup_model_cache, "load_models", lambda: [("repo/a", "Q4_K_M", "g", False)])
+    monkeypatch.setattr(cleanup_model_cache, "load_models", lambda: [("repo/a", "Q4_K_M", "g")])
     monkeypatch.setattr(cleanup_model_cache, "scan_cache_dir", lambda: cache_info)
     monkeypatch.setattr("sys.argv", ["cleanup_model_cache.py"])
 
@@ -457,7 +457,7 @@ def test_main_actual_deletion_prunes_empty_snapshot_dirs(
             )
         ]
     )
-    monkeypatch.setattr(cleanup_model_cache, "load_models", lambda: [("repo/a", "Q4_K_M", "g", False)])
+    monkeypatch.setattr(cleanup_model_cache, "load_models", lambda: [("repo/a", "Q4_K_M", "g")])
     monkeypatch.setattr(cleanup_model_cache, "scan_cache_dir", lambda: cache_info)
     monkeypatch.setattr("sys.argv", ["cleanup_model_cache.py"])
 
