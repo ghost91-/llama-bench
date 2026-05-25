@@ -4,6 +4,12 @@ from typing import TypeAlias
 ResultKey: TypeAlias = tuple[str, str, str]
 
 
+def canonical_result_model(model: str, provider: str) -> str:
+    if provider == "mudler" and model.endswith("-APEX"):
+        return model[:-5]
+    return model
+
+
 def render_model_tag(repo: str, quant: str) -> str:
     return f"{repo}:{quant}"
 
@@ -22,6 +28,8 @@ def display_name_from_repo(repo: str) -> str:
         if name.startswith(prefix):
             name = name[len(prefix) :]
             break
+    if name.endswith("-APEX-GGUF"):
+        name = name[:-10]
     if name.endswith("-GGUF"):
         name = name[:-5]
     if name.endswith("-it"):

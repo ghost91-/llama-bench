@@ -17,41 +17,6 @@ SAMPLER_CONFIG = {
         "min-p": "0.0",
         "reasoning": "on",
     },
-    "gemma-4-31b": {
-        "temp": "1.0",
-        "top-k": "64",
-        "min-p": "0.0",
-        "reasoning": "on",
-    },
-    "mistral-small-4-119b": {
-        "temp": "0.1",
-        "min-p": "0.0",
-        "chat-template-kwargs": '{"reasoning_effort": "none"}',
-    },
-    "ministral-3-3b-instruct": {
-        "temp": "0.1",
-        "min-p": "0.0",
-    },
-    "ministral-3-3b-reasoning": {
-        "temp": "0.7",
-        "min-p": "0.0",
-    },
-    "ministral-3-8b-instruct": {
-        "temp": "0.1",
-        "min-p": "0.0",
-    },
-    "ministral-3-8b-reasoning": {
-        "temp": "0.7",
-        "min-p": "0.0",
-    },
-    "ministral-3-14b-instruct": {
-        "temp": "0.1",
-        "min-p": "0.0",
-    },
-    "ministral-3-14b-reasoning": {
-        "temp": "1.0",
-        "min-p": "0.0",
-    },
     "qwen3.5-0.8b": {
         "temp": "1.0",
         "top-k": "20",
@@ -104,20 +69,6 @@ SAMPLER_CONFIG = {
         "min-p": "0.0",
         "reasoning": "on",
     },
-    "qwen3.5-27b": {
-        "temp": "1.0",
-        "top-k": "20",
-        "min-p": "0.0",
-        "presence-penalty": "1.5",
-        "reasoning": "on",
-    },
-    "qwen3.6-27b": {
-        "temp": "0.6",
-        "top-k": "20",
-        "min-p": "0.0",
-        "reasoning": "on",
-        "chat-template-kwargs": '{"preserve_thinking": true}',
-    },
     "gpt-oss-120b": {
         "temp": "1.0",
         "top-p": "1.0",
@@ -125,7 +76,7 @@ SAMPLER_CONFIG = {
         "min-p": "0.0",
         "ubatch-size": "2048",
         "jinja": "true",
-        "chat-template-kwargs": '{"reasoning_effort": "high"}',
+        "chat-template-kwargs": '{"reasoning_effort": "medium"}',
     },
     "gpt-oss-20b": {
         "temp": "1.0",
@@ -134,6 +85,6 @@ SAMPLER_CONFIG = {
         "min-p": "0.0",
         "ubatch-size": "2048",
         "jinja": "true",
-        "chat-template-kwargs": '{"reasoning_effort": "high"}',
+        "chat-template-kwargs": '{"reasoning_effort": "medium"}',
     },
 }

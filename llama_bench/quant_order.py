@@ -1,4 +1,6 @@
-QUANT_ALIASES = {
+import re
+
+_QUANT_ALIASES = {
     "UD-IQ1_M": "IQ1_M",
     "UD-IQ2_XXS": "IQ2_XXS",
     "UD-IQ2_XSS": "IQ2_XSS",
@@ -23,7 +25,7 @@ QUANT_ALIASES = {
     "UD-Q8_K_XL": "Q8_K_XL",
 }
 
-QUANT_POSITION = {
+_QUANT_POSITION = {
     "IQ1_M": 1.0,
     "IQ2_XXS": 2.0,
     "IQ2_XSS": 2.1,
@@ -33,11 +35,13 @@ QUANT_POSITION = {
     "Q2_K": 2.5,
     "Q2_K_L": 2.6,
     "Q2_K_XL": 2.8,
+    "APEX-I-Mini": 2.95,
     "IQ3_XXS": 3.0,
     "IQ3_XS": 3.1,
     "IQ3_S": 3.2,
     "IQ3_M": 3.3,
     "Q3_K_S": 3.35,
+    "APEX-I-Compact": 3.49,
     "Q3_K_M": 3.5,
     "Q3_K_L": 3.6,
     "Q3_K_XL": 3.7,
@@ -51,11 +55,13 @@ QUANT_POSITION = {
     "Q4_0": 4.05,
     "Q4_1": 4.1,
     "Q4_K_S": 4.15,
+    "APEX-I-Quality": 4.3,
     "Q4_K_M": 4.35,
     "Q4_K_L": 4.45,
     "Q4_K_XL": 4.55,
     "Q5_K_S": 5.1,
     "Q5_K_M": 5.3,
+    "APEX-I-Balanced": 5.35,
     "Q5_K_L": 5.4,
     "Q5_K_XL": 5.5,
     "Q6_K_S": 6.0,
@@ -67,16 +73,25 @@ QUANT_POSITION = {
 }
 
 
+
+_BPW_SUFFIX_PATTERN = re.compile(r"-\d+(?:\.\d+)?bpw$", re.IGNORECASE)
+
+
 def canonical_quant(quant: str) -> str:
-    return QUANT_ALIASES.get(quant, quant)
+    stripped: str = _BPW_SUFFIX_PATTERN.sub("", quant)
+    return _QUANT_ALIASES.get(stripped, stripped)
 
 
-QUANT_ORDER = {
+_QUANT_ORDER = {
     quant: int(position * 100)
     for quant, position in {
-        **QUANT_POSITION,
-        **{alias: QUANT_POSITION[canonical] for alias, canonical in QUANT_ALIASES.items()},
+        **_QUANT_POSITION,
+        **{alias: _QUANT_POSITION[canonical] for alias, canonical in _QUANT_ALIASES.items()},
     }.items()
 }
 
-UNKNOWN_QUANT_ORDER = max(QUANT_ORDER.values()) + 1
+UNKNOWN_QUANT_ORDER = max(_QUANT_ORDER.values()) + 1
+
+
+def quant_sort_key(quant: str) -> int:
+    return _QUANT_ORDER.get(canonical_quant(quant), UNKNOWN_QUANT_ORDER)

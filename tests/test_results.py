@@ -206,11 +206,11 @@ group = "bar"
 
 
 def test_unknown_quant_sorts_after_all_known_quants() -> None:
-    from llama_bench.quant_order import QUANT_ORDER, UNKNOWN_QUANT_ORDER
+    from llama_bench.quant_order import UNKNOWN_QUANT_ORDER, quant_sort_key
 
-    assert UNKNOWN_QUANT_ORDER > max(QUANT_ORDER.values())
-    assert QUANT_ORDER.get("Q8_K_XL", UNKNOWN_QUANT_ORDER) < UNKNOWN_QUANT_ORDER
-    assert QUANT_ORDER.get("TOTALLY_UNKNOWN", UNKNOWN_QUANT_ORDER) == UNKNOWN_QUANT_ORDER
+    assert quant_sort_key("Q8_K_XL") < UNKNOWN_QUANT_ORDER
+    assert quant_sort_key("IQ3_S-3.00bpw") == quant_sort_key("IQ3_S")
+    assert quant_sort_key("TOTALLY_UNKNOWN") == UNKNOWN_QUANT_ORDER
 
 
 def test_sort_results_file_places_unknown_quant_last(

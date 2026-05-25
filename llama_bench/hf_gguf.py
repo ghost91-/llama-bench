@@ -11,7 +11,11 @@ def split_gguf_path(path: str) -> tuple[str, str, int, int]:
         index = int(match.group(2))
         count = int(match.group(3))
 
-    match = re.search(r"[-.](UD-[A-Z0-9_]+|[A-Z0-9_]+)$", prefix, re.IGNORECASE)
+    match = re.search(
+        r"[-.](APEX-I-[A-Z0-9_]+|APEX-[A-Z0-9_]+|UD-[A-Z0-9_]+|[A-Z0-9_]+(?:-\d+(?:\.\d+)?bpw)?)$",
+        prefix,
+        re.IGNORECASE,
+    )
     tag = match.group(1).upper() if match else ""
     return prefix, tag, index, count
 

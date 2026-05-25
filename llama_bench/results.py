@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from typing import Iterable, Mapping, MutableMapping
 
 from llama_bench.model_identity import identity_from_tag, render_model_tag, result_key_from_parts
-from llama_bench.quant_order import QUANT_ORDER, UNKNOWN_QUANT_ORDER
+from llama_bench.quant_order import quant_sort_key
 from llama_bench.schema_types import ModelRecord, ResultRow
 
 PACKAGE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -140,7 +140,7 @@ def sort_results_file() -> None:
     def sort_key(row: ResultRow) -> tuple[tuple[int, float], str, int, int, int, int]:
         params = row.get("params", "?")
         model = row.get("model", "")
-        quant = QUANT_ORDER.get(row.get("quant", ""), UNKNOWN_QUANT_ORDER)
+        quant = quant_sort_key(row.get("quant", ""))
         provider = PROVIDER_ORDER.get(row.get("provider", ""), 99)
         mode = 0 if row.get("mode") == "text" else 1
         ubatch = int(row.get("ubatch", "0"))

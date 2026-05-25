@@ -147,7 +147,7 @@ class Args(argparse.Namespace):
 
 
 StopOnMatch: TypeAlias = Callable[[FitResult], bool]
-ScanStrategyResult: TypeAlias = tuple[list[FitResult], FitResult | None, str, bool]
+ScanStrategyResult: TypeAlias = tuple[list[FitResult], FitResult | None, str]
 ScanContextProvider: TypeAlias = Callable[[], tuple[int | None, Sequence[int]]]
 
 _log_file: str | None = None
@@ -645,24 +645,6 @@ def scan_fit_configs(
     return results
 
 
-def ngl_rank(ngl: int | None) -> int:
-    if ngl is None:
-        return -1
-    if ngl == -1:
-        return 10**9
-    return ngl
-
-
-def prefer_result(left: FitResult | None, right: FitResult | None) -> FitResult | None:
-    if left is None:
-        return right
-    if right is None:
-        return left
-    left_key = (ngl_rank(left["ngl"]), left.get("ubatch", 0), left["ctx"] or 0)
-    right_key = (ngl_rank(right["ngl"]), right.get("ubatch", 0), right["ctx"] or 0)
-    return left if left_key >= right_key else right
-
-
 def probe_fit_config(tag: str, target_ctx: int, fit_target: int, ubatch: int) -> FitResult | None:
     params_str = get_fit_params(tag, target_ctx, fit_target=fit_target, ubatch=ubatch)
     if not params_str:
@@ -761,7 +743,7 @@ def fallback_scan_strategy(
         tag, sorted(ctx_targets, reverse=True), fit_target=fit_target, ubatch=ubatch
     )
     chosen, reason = select_best_result(results, is_moe)
-    return results, chosen, reason, is_moe
+    return results, chosen, reason
 
 
 def finalize_target_scan(
@@ -769,29 +751,8 @@ def finalize_target_scan(
 ) -> ScanStrategyResult:
     if chosen is None:
         chosen, reason = select_best_result(results, is_moe)
-        return results, chosen, reason, is_moe
-    return results, chosen, reason_for_target_scan(chosen, target_ngl, is_moe), is_moe
-
-
-def resolve_probe_strategy(
-    probe_dense: FitResult | None, probe_moe: FitResult | None, is_moe: bool
-) -> tuple[FitResult, int, bool] | None:
-    probes = [p for p in (probe_dense, probe_moe) if p is not None and p["ngl"] is not None]
-    if not probes:
-        return None
-
-    if is_moe:
-        target_ngl = max(fit_ngl(p) for p in probes)
-    else:
-        target_ngl = -1 if any(fit_ngl(p) == -1 for p in probes) else max(fit_ngl(p) for p in probes)
-
-    selected_probe = next(
-        (p for p in (probe_moe, probe_dense) if p is not None and p["ngl"] == target_ngl),
-        prefer_result(probe_moe, probe_dense),
-    )
-    if selected_probe is None:
-        return None
-    return selected_probe, target_ngl, is_moe
+        return results, chosen, reason
+    return results, chosen, reason_for_target_scan(chosen, target_ngl, is_moe)
 
 
 def choose_scan_strategy(
@@ -800,51 +761,23 @@ def choose_scan_strategy(
     fit_target: int,
     max_ctx: int | None,
     is_moe: bool,
-    forced_ubatch: int | None = None,
+    ubatch: int,
 ) -> ScanStrategyResult:
     probe_ctx = ctx_targets[0]
-    if forced_ubatch is not None:
-        probe = probe_fit_config(tag, probe_ctx, fit_target, forced_ubatch)
-        if probe is None or probe["ngl"] is None:
-            return fallback_scan_strategy(tag, ctx_targets, fit_target, forced_ubatch, is_moe)
+    probe = probe_fit_config(tag, probe_ctx, fit_target, ubatch)
+    if probe is None or probe["ngl"] is None:
+        return fallback_scan_strategy(tag, ctx_targets, fit_target, ubatch, is_moe)
 
-        target_ngl = probe["ngl"]
-        results, chosen = run_target_scan(
-            tag,
-            ctx_targets,
-            fit_target,
-            max_ctx,
-            forced_ubatch,
-            target_ngl,
-            descending=is_moe or target_ngl == -1,
-            probe_result=probe,
-        )
-        return finalize_target_scan(results, chosen, target_ngl, is_moe)
-
-    probe_dense = probe_fit_config(tag, probe_ctx, fit_target, FIT_UBATCH_DENSE)
-    probe_moe = probe_fit_config(tag, probe_ctx, fit_target, MOE_UBATCH_SIZES[1])
-    strategy = resolve_probe_strategy(probe_dense, probe_moe, is_moe)
-
-    if strategy is None:
-        log("scan | fallback | reason=probes_failed | strategy=descending | ub=512")
-        return fallback_scan_strategy(tag, ctx_targets, fit_target, FIT_UBATCH_DENSE, is_moe)
-
-    selected_probe, target_ngl, is_moe = strategy
-    selected_ubatch = selected_probe["ubatch"]
-    model_type = "MoE" if is_moe else "Dense"
-    log(
-        f"scan | strategy | type={model_type} | target_ngl={format_ngl(target_ngl)} | ub={selected_ubatch}"
-    )
-
+    target_ngl = probe["ngl"]
     results, chosen = run_target_scan(
         tag,
         ctx_targets,
         fit_target,
         max_ctx,
-        selected_ubatch,
+        ubatch,
         target_ngl,
         descending=is_moe or target_ngl == -1,
-        probe_result=selected_probe,
+        probe_result=probe,
     )
     return finalize_target_scan(results, chosen, target_ngl, is_moe)
 
@@ -1074,7 +1007,6 @@ def write_result_row(
     chosen: FitResult,
     is_moe: bool,
     bench_result: BenchResult | None,
-    _caps: Capabilities,
     mode: str,
     fit_target: int,
     ubatch: int,
@@ -1218,13 +1150,13 @@ def scan_and_bench_ubatch(
         log(f"scan | plan | max_ctx={format_ctx(max_ctx)}")
         log(f"scan | plan | candidates={','.join(format_ctx(c) for c in ctx_targets)}")
 
-        scan_results, chosen, reason, is_moe = choose_scan_strategy(
+        scan_results, chosen, reason = choose_scan_strategy(
             tag,
             ctx_targets,
             fit_target,
             max_ctx,
             model_is_moe,
-            forced_ubatch=ubatch,
+            ubatch=ubatch,
         )
         did_scan = True
 
@@ -1304,9 +1236,9 @@ def scan_and_bench_ubatch(
             f"bench | ok | elapsed={time.monotonic() - bench_start:.1f}s | pp{BENCH_PP}={pp_f}±{pp_stddev_f} | tg{BENCH_TG}={tg_f}±{tg_stddev_f}"
         )
 
-    if caps is None:
-        caps = detect_capabilities(tag)
     if did_scan:
+        if caps is None:
+            caps = detect_capabilities(tag)
         caps = write_scan_cache_entry(
             cache,
             tag,
@@ -1332,7 +1264,6 @@ def scan_and_bench_ubatch(
             chosen,
             is_moe,
             bench_result,
-            caps,
             mode=mode,
             fit_target=fit_target,
             ubatch=ubatch,

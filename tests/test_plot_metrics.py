@@ -2,7 +2,6 @@
 
 import csv
 import sys
-from collections import Counter
 from pathlib import Path
 
 from pytest import MonkeyPatch
@@ -61,20 +60,23 @@ def make_result_row(
 
 def make_metric_row(
     *,
+    model: str = "Foo",
+    group: str = "foo-group",
     quant: str = "Q4_K_M",
     provider: str = "unsloth",
     mode: plot_metrics.Mode = "text",
     ctx: int = 8000,
     pp: float = 10.0,
     tg: float = 20.0,
+    ubatch: int = 512,
     kld: float | None = 0.2,
 ) -> plot_metrics.MetricRow:
     return plot_metrics.MetricRow(
-        model="Foo",
+        model=model,
         quant=quant,
         provider=provider,
         mode=mode,
-        group="foo-group",
+        group=group,
         ctx=ctx,
         size_gib=3.5,
         pp_tps=pp,
@@ -82,7 +84,7 @@ def make_metric_row(
         tg_tps=tg,
         tg_stddev_tps=2.0,
         reps=4,
-        ubatch=512,
+        ubatch=ubatch,
         kld=kld,
     )
 
@@ -133,7 +135,7 @@ def test_load_metric_rows_skips_rows_not_in_models_toml(monkeypatch: MonkeyPatch
     assert [row.model for row in rows] == ["Foo"]
 
 
-def test_load_metric_rows_filters_mode_and_ubatch(monkeypatch: MonkeyPatch, tmp_path: Path) -> None:
+def test_load_metric_rows_filters_mode_and_repeatable_ubatch(monkeypatch: MonkeyPatch, tmp_path: Path) -> None:
     results_file = tmp_path / "fit-bench-results.csv"
     kld_file = tmp_path / "missing-kld.csv"
     write_results(
@@ -141,6 +143,8 @@ def test_load_metric_rows_filters_mode_and_ubatch(monkeypatch: MonkeyPatch, tmp_
         [
             make_result_row(mode="text", ubatch="512"),
             make_result_row(mode="vision", ubatch="1024"),
+            make_result_row(mode="vision", ubatch="2048", ctx="32k"),
+            make_result_row(mode="vision", ubatch="4096", ctx="64k"),
         ],
     )
 
@@ -150,9 +154,39 @@ def test_load_metric_rows_filters_mode_and_ubatch(monkeypatch: MonkeyPatch, tmp_
         lambda: {("Foo", "Q4_K_M", "unsloth"): "foo-group"},
     )
 
-    rows = plot_metrics.load_metric_rows(str(results_file), str(kld_file), mode="vision", ubatch=1024)
+    rows = plot_metrics.load_metric_rows(
+        str(results_file), str(kld_file), mode="vision", ubatches=[1024, 2048]
+    )
 
-    assert [(row.mode, row.ubatch) for row in rows] == [("vision", 1024)]
+    assert [(row.mode, row.ubatch) for row in rows] == [("vision", 1024), ("vision", 2048)]
+
+
+def test_load_metric_rows_canonicalises_existing_mudler_apex_rows(monkeypatch: MonkeyPatch, tmp_path: Path) -> None:
+    results_file = tmp_path / "fit-bench-results.csv"
+    kld_file = tmp_path / "kld-results.csv"
+    write_results(
+        results_file,
+        [
+            make_result_row(
+                model="Qwen3.6-35B-A3B-APEX",
+                quant="APEX-I-Compact",
+                provider="mudler",
+            ),
+        ],
+    )
+    kld_file.write_text(
+        "model,quant,provider,kld\nQwen3.6-35B-A3B,APEX-I-Compact,mudler,0.0431\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        plot_metrics,
+        "model_groups",
+        lambda: {("Qwen3.6-35B-A3B", "APEX-I-Compact", "mudler"): "qwen3.6-35b-a3b"},
+    )
+
+    rows = plot_metrics.load_metric_rows(str(results_file), str(kld_file))
+
+    assert [(row.model, row.kld) for row in rows] == [("Qwen3.6-35B-A3B", 0.0431)]
 
 
 def test_load_kld_skips_blank_and_zero_and_negative_kld(tmp_path: Path) -> None:
@@ -228,10 +262,26 @@ def test_kld_colored_scatter_preserves_mode_markers(tmp_path: Path) -> None:
     assert len(kld_collections) >= 2
 
 
-def test_label_omits_provider() -> None:
-    row = make_metric_row(quant="Q4_K_M", provider="unsloth", mode="vision")
+def test_kld_size_rows_dedupe_ubatch_only() -> None:
+    rows = [
+        make_metric_row(quant="Q4_K_M", ubatch=2048, kld=0.1),
+        make_metric_row(quant="Q4_K_M", ubatch=512, kld=0.1),
+        make_metric_row(quant="Q5_K_M", ubatch=512, kld=0.2),
+    ]
 
-    assert plot_metrics._label(row) == "Q4_K_M vision ub=512"
+    deduped = plot_metrics._dedupe_kld_size_rows(rows)
+
+    assert [(row.quant, row.ubatch) for row in deduped] == [("Q4_K_M", 512), ("Q5_K_M", 512)]
+
+
+def test_combined_speed_uses_harmonic_mean_of_normalized_speeds() -> None:
+    balanced = make_metric_row(quant="Q4_K_M", pp=10.0, tg=10.0)
+    prompt_heavy = make_metric_row(quant="Q5_K_M", pp=20.0, tg=2.5)
+
+    values = plot_metrics._combined_speed_values([balanced, prompt_heavy])
+
+    assert round(values[balanced], 6) == round(2 / (2 + 1), 6)
+    assert round(values[prompt_heavy], 6) == round(2 / (1 + 4), 6)
 
 
 def test_kld_tick_formatter_uses_decimal_notation() -> None:
@@ -242,9 +292,9 @@ def test_kld_tick_formatter_uses_decimal_notation() -> None:
 
 
 def test_ctx_vs_speed_plot_writes_png(tmp_path: Path) -> None:
-    out_path = plot_metrics.plot_ctx_vs_speed("Foo", [make_metric_row()], str(tmp_path))
+    out_path = plot_metrics.plot_ctx_vs_speed("Foo", [make_metric_row()], str(tmp_path / "plots" / "foo-group"))
 
-    assert out_path == str(tmp_path / "Foo-ctx-vs-speed.png")
+    assert out_path == str(tmp_path / "plots" / "foo-group" / "Foo-ctx-vs-speed.png")
     assert Path(out_path).exists()
 
 
@@ -254,29 +304,10 @@ def test_speed_map_plot_writes_png_without_kld(tmp_path: Path) -> None:
         make_metric_row(provider="bartowski", mode="vision", pp=11.0, tg=21.0, kld=None),
     ]
 
-    out_path = plot_metrics.plot_speed_map("Foo", rows, str(tmp_path))
+    out_path = plot_metrics.plot_speed_map("Foo", rows, str(tmp_path / "plots" / "foo-group"))
 
-    assert out_path == str(tmp_path / "Foo-speed-map.png")
+    assert out_path == str(tmp_path / "plots" / "foo-group" / "Foo-speed-map.png")
     assert Path(out_path).exists()
-
-
-def test_ctx_pp_kld_plot_writes_png_with_partial_kld(tmp_path: Path) -> None:
-    rows = [
-        make_metric_row(provider="unsloth", mode="text", kld=0.1),
-        make_metric_row(provider="bartowski", mode="vision", ctx=16000, pp=11.0, kld=None),
-    ]
-
-    out_path = plot_metrics.plot_ctx_pp_kld("Foo", rows, str(tmp_path))
-
-    assert out_path is not None
-    assert out_path == str(tmp_path / "Foo-ctx-pp-kld.png")
-    assert Path(out_path).exists()
-
-
-def test_ctx_pp_kld_plot_skips_without_kld(tmp_path: Path) -> None:
-    out_path = plot_metrics.plot_ctx_pp_kld("Foo", [make_metric_row(kld=None)], str(tmp_path))
-
-    assert out_path is None
 
 
 def test_speed_map_plot_writes_png_with_partial_kld(tmp_path: Path) -> None:
@@ -285,23 +316,10 @@ def test_speed_map_plot_writes_png_with_partial_kld(tmp_path: Path) -> None:
         make_metric_row(provider="bartowski", mode="vision", pp=11.0, tg=21.0, kld=None),
     ]
 
-    out_path = plot_metrics.plot_speed_map("Foo", rows, str(tmp_path))
+    out_path = plot_metrics.plot_speed_map("Foo", rows, str(tmp_path / "plots" / "foo-group"))
 
-    assert out_path == str(tmp_path / "Foo-speed-map.png")
+    assert out_path == str(tmp_path / "plots" / "foo-group" / "Foo-speed-map.png")
     assert Path(out_path).exists()
-
-
-def test_real_metric_rows_match_snapshot_inventory() -> None:
-    rows = plot_metrics.load_metric_rows()
-
-    assert len(rows) == 684
-    assert Counter(row.mode for row in rows) == {"text": 369, "vision": 315}
-    assert sum(row.kld is not None for row in rows) == 407
-
-    by_group = Counter(row.group for row in rows)
-    assert by_group["gemma-4-26b-a4b"] == 176
-    assert by_group["qwen3.5-122b-a10b"] == 86
-    assert by_group["qwen3.6-35b-a3b"] == 208
 
 
 def test_main_plot_inventory_for_group(monkeypatch: MonkeyPatch, tmp_path: Path) -> None:
@@ -311,23 +329,41 @@ def test_main_plot_inventory_for_group(monkeypatch: MonkeyPatch, tmp_path: Path)
         calls.append((model, out_dir, len(rows)))
         return str(Path(out_dir) / f"{model}-fake.png")
 
+    def fake_load_metric_rows(
+        mode: plot_metrics.Mode | None = None,
+        ubatches: list[int] | None = None,
+    ) -> list[plot_metrics.MetricRow]:
+        del mode, ubatches
+        return [
+            make_metric_row(model="Wanted", group="wanted-group"),
+            make_metric_row(model="Skipped", group="skipped-group"),
+        ]
+
     monkeypatch.setattr(
         plot_metrics,
         "PLOTTERS",
         {
-            "kld-vs-bench": fake_plotter,
+            "quality-tradeoffs": fake_plotter,
             "ctx-vs-speed": fake_plotter,
-            "ctx-pp-kld": fake_plotter,
             "speed-map": fake_plotter,
         },
     )
     monkeypatch.setattr(plot_metrics, "SCRIPT_DIR", str(tmp_path))
+    monkeypatch.setattr(plot_metrics, "load_metric_rows", fake_load_metric_rows)
     monkeypatch.setattr(
         sys,
         "argv",
-        ["plot_metrics.py", "--plot", "all", "--group", "qwen3.5-122b-a10b"],
+        [
+            "plot_metrics.py",
+            "--plot",
+            "all",
+            "--group",
+            "wanted-group",
+            "--out-dir",
+            str(tmp_path / "plots"),
+        ],
     )
 
     plot_metrics.main()
 
-    assert calls == [("Qwen3.5-122B-A10B", str(tmp_path), 86)] * 4
+    assert calls == [("Wanted", str(tmp_path / "plots" / "wanted-group"), 1)] * 3

@@ -14,7 +14,7 @@ Uses `uv run` (no manual venv).
 - **Download:** `uv run download_models.py`
 - **Clean cache:** `uv run cleanup_model_cache.py`
 - **KLD extract:** `uv run kld_extract.py`
-- **Plot KLD:** `uv run plot_kld.py`
+- **Plot metrics:** `uv run plot_metrics.py`
 - **Generate INI:** `uv run generate_models_ini.py`
 
 Local llama.cpp sources at `~/Development/other/llama.cpp`; check that tree first for upstream flags, behaviour, or implementation details.
@@ -47,6 +47,8 @@ Targets an RTX 4070 Laptop (8 GB VRAM) + 64 GB RAM. `fit_bench.py` reserves 256 
 - `fit-bench-results.csv`: benchmark results keyed by `(model, quant, provider, mode, ubatch)`. Current columns include `mode`, `ubatch`, `offload`, `pp4096_tps`, `pp4096_stddev_tps`, `tg128_tps`, `tg128_stddev_tps`, `reasoning`, `switchable`, `efforts`, `bench_ts`.
 - `kld-results.csv`: consolidated KLD data.
 - Runtime logs go in `logs/` (for example `logs/scan-text.log`, `logs/bench-vision.log`).
+
+Never prune or clean up `fit-bench-results.csv` or `kld-results.csv`; the user manages those result datasets manually. Scripts may ignore rows that are not in `models.toml`, but agents must not delete or rewrite historical result rows as cleanup.
 
 ### Gotchas
 

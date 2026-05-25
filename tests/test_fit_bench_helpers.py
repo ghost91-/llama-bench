@@ -336,14 +336,6 @@ def test_strategy_helpers_choose_expected_results() -> None:
         "offload": None,
         "ot": None,
     }
-    probe_moe: fit_bench.FitResult = {
-        "target_ctx": 5000,
-        "ctx": 5000,
-        "ngl": 84,
-        "ubatch": 1024,
-        "offload": None,
-        "ot": None,
-    }
     dense_results: list[fit_bench.FitResult] = [
         probe_dense,
         {
@@ -364,16 +356,6 @@ def test_strategy_helpers_choose_expected_results() -> None:
         },
     ]
 
-    assert fit_bench.resolve_probe_strategy(probe_dense, probe_moe, is_moe=False) == (
-        probe_dense,
-        -1,
-        False,
-    )
-    assert fit_bench.resolve_probe_strategy(probe_dense, probe_moe, is_moe=True) == (
-        probe_moe,
-        84,
-        True,
-    )
     assert fit_bench.choose_target_result(dense_results, -1, descending=False) == dense_results[1]
     assert fit_bench.select_best_result(dense_results, is_moe=False) == (
         dense_results[1],
@@ -534,10 +516,6 @@ def test_merge_prefer_and_format_helpers() -> None:
     }
 
     assert fit_bench.merge_scan_results([low, high], [replacement]) == [replacement, high]
-    assert fit_bench.ngl_rank(None) == -1
-    assert fit_bench.ngl_rank(-1) > fit_bench.ngl_rank(999)
-    assert fit_bench.prefer_result(low, high) is high
-    assert fit_bench.prefer_result(None, low) is low
     assert fit_bench.ot_to_bench_arg("0,1") == ["-ot", "0;1"]
     assert fit_bench.ot_to_bench_arg(None) == []
     assert fit_bench.count_offload(None) is None
@@ -802,14 +780,13 @@ def test_fallback_scan_strategy_scans_all_targets_for_moe_non_monotonic(
     monkeypatch.setattr(fit_bench, "get_fit_params", fake_get_fit_params)
     monkeypatch.setattr(fit_bench, "log", noop_log)
 
-    results, chosen, reason, is_moe = fit_bench.fallback_scan_strategy(
+    results, chosen, reason = fit_bench.fallback_scan_strategy(
         "repo/model:Q4_K_M", [5000, 10000, 20000, 30000], 128, 512, True
     )
 
     assert scanned_targets == [30000, 20000, 10000, 5000]
     assert chosen == make_fit_result(20000, 20000, 84)
     assert reason == "MoE: highest context that keeps max ngl (84)"
-    assert is_moe is True
     assert [result["target_ctx"] for result in results] == scanned_targets
 
 
@@ -857,7 +834,7 @@ def test_run_target_scan_adds_refinement_results(monkeypatch: MonkeyPatch) -> No
     assert [result["target_ctx"] for result in results] == [5000, 50000, 75000, 100000]
 
 
-def test_choose_scan_strategy_uses_forced_ubatch_probe(monkeypatch: MonkeyPatch) -> None:
+def test_choose_scan_strategy_uses_ubatch_probe(monkeypatch: MonkeyPatch) -> None:
     probe: fit_bench.FitResult = {
         "target_ctx": 5000,
         "ctx": 5000,
@@ -900,100 +877,13 @@ def test_choose_scan_strategy_uses_forced_ubatch_probe(monkeypatch: MonkeyPatch)
     monkeypatch.setattr(fit_bench, "run_target_scan", fake_run_target_scan)
 
     assert fit_bench.choose_scan_strategy(
-        "repo/model:Q4_K_M", [5000, 20000], 128, 20000, is_moe=True, forced_ubatch=2048
+        "repo/model:Q4_K_M", [5000, 20000], 128, 20000, is_moe=True, ubatch=2048
     ) == (
         [probe, chosen],
         chosen,
         "MoE: highest context that keeps max ngl (84)",
-        True,
     )
     assert run_args == [(2048, 84, True)]
-
-
-def test_choose_scan_strategy_unforced_uses_dense_full_vram_probe(
-    monkeypatch: MonkeyPatch,
-) -> None:
-    probe_calls: list[int] = []
-    run_args: list[tuple[int, int, bool, fit_bench.FitResult | None]] = []
-    dense_probe = make_fit_result(5000, 5000, -1, ubatch=512)
-    moe_probe = make_fit_result(5000, 5000, 84, ubatch=1024)
-    chosen = make_fit_result(50000, 50000, -1, ubatch=512)
-
-    def fake_probe_fit_config(
-        _tag: str, _target_ctx: int, _fit_target: int, ubatch: int
-    ) -> fit_bench.FitResult:
-        probe_calls.append(ubatch)
-        return dense_probe if ubatch == 512 else moe_probe
-
-    def fake_run_target_scan(
-        _tag: str,
-        _ctx_targets: list[int] | tuple[int, ...],
-        _fit_target: int,
-        _max_ctx: int | None,
-        ubatch: int,
-        target_ngl: int,
-        descending: bool,
-        probe_result: fit_bench.FitResult | None = None,
-    ) -> tuple[list[fit_bench.FitResult], fit_bench.FitResult | None]:
-        del _ctx_targets
-        run_args.append((ubatch, target_ngl, descending, probe_result))
-        return [dense_probe, chosen], chosen
-
-    monkeypatch.setattr(fit_bench, "probe_fit_config", fake_probe_fit_config)
-    monkeypatch.setattr(fit_bench, "run_target_scan", fake_run_target_scan)
-    monkeypatch.setattr(fit_bench, "log", noop_log)
-
-    assert fit_bench.choose_scan_strategy(
-        "repo/model:Q4_K_M", [5000, 50000], 128, 50000, is_moe=False
-    ) == (
-        [dense_probe, chosen],
-        chosen,
-        "Dense: highest context that still fits fully in VRAM",
-        False,
-    )
-    assert probe_calls == [512, 1024]
-    assert run_args == [(512, -1, True, dense_probe)]
-
-
-def test_choose_scan_strategy_unforced_uses_moe_max_ngl_probe(
-    monkeypatch: MonkeyPatch,
-) -> None:
-    dense_probe = make_fit_result(5000, 5000, 80, ubatch=512)
-    moe_probe = make_fit_result(5000, 5000, 84, ubatch=1024)
-    run_args: list[tuple[int, int, bool, fit_bench.FitResult | None]] = []
-
-    def fake_probe_fit_config(
-        _tag: str, _target_ctx: int, _fit_target: int, ubatch: int
-    ) -> fit_bench.FitResult:
-        return dense_probe if ubatch == 512 else moe_probe
-
-    def fake_run_target_scan(
-        _tag: str,
-        _ctx_targets: list[int] | tuple[int, ...],
-        _fit_target: int,
-        _max_ctx: int | None,
-        ubatch: int,
-        target_ngl: int,
-        descending: bool,
-        probe_result: fit_bench.FitResult | None = None,
-    ) -> tuple[list[fit_bench.FitResult], fit_bench.FitResult | None]:
-        del _ctx_targets
-        run_args.append((ubatch, target_ngl, descending, probe_result))
-        return [moe_probe], moe_probe
-
-    monkeypatch.setattr(fit_bench, "probe_fit_config", fake_probe_fit_config)
-    monkeypatch.setattr(fit_bench, "run_target_scan", fake_run_target_scan)
-    monkeypatch.setattr(fit_bench, "log", noop_log)
-
-    assert fit_bench.choose_scan_strategy(
-        "repo/model:Q4_K_M", [5000, 50000], 128, 50000, is_moe=True
-    ) == (
-        [moe_probe],
-        moe_probe,
-        "MoE: highest context that keeps max ngl (84)",
-        True,
-    )
-    assert run_args == [(1024, 84, True, moe_probe)]
 
 
 def test_choose_scan_strategy_probe_failure_falls_back_to_descending_dense_scan(
@@ -1022,15 +912,14 @@ def test_choose_scan_strategy_probe_failure_falls_back_to_descending_dense_scan(
     monkeypatch.setattr(fit_bench, "scan_fit_configs", fake_scan_fit_configs)
     monkeypatch.setattr(fit_bench, "log", noop_log)
 
-    results, chosen, reason, is_moe = fit_bench.choose_scan_strategy(
-        "repo/model:Q4_K_M", [5000, 10000], 128, 10000, is_moe=False
+    results, chosen, reason = fit_bench.choose_scan_strategy(
+        "repo/model:Q4_K_M", [5000, 10000], 128, 10000, is_moe=False, ubatch=512
     )
 
     assert scanned == [([10000, 5000], 512)]
     assert results[0]["target_ctx"] == 10000
     assert chosen == results[0]
     assert reason == "Dense fallback: no full-VRAM fit found, using highest context at max ngl (72)"
-    assert is_moe is False
 
 
 def test_choose_scan_strategy_dense_probe_below_full_vram_uses_dense_fallback_reason(
@@ -1062,12 +951,11 @@ def test_choose_scan_strategy_dense_probe_below_full_vram_uses_dense_fallback_re
     monkeypatch.setattr(fit_bench, "log", noop_log)
 
     assert fit_bench.choose_scan_strategy(
-        "repo/model:Q4_K_M", [5000, 20000], 128, 20000, is_moe=False
+        "repo/model:Q4_K_M", [5000, 20000], 128, 20000, is_moe=False, ubatch=512
     ) == (
         [probe, chosen],
         chosen,
         "Dense fallback: 5k probe does not fit fully in VRAM, using highest context at max ngl (72)",
-        False,
     )
 
 
@@ -1096,14 +984,11 @@ def test_write_result_row_formats_benchmark(monkeypatch: MonkeyPatch) -> None:
         "tg_speed": "24.68",
         "tg_stddev": "1.23",
     }
-    caps: Capabilities = {"vision": True, "reasoning": {"switchable": True, "efforts": "low|high"}}
-
     fit_bench.write_result_row(
         "unsloth/Foo-GGUF:Q4_K_M",
         chosen,
         True,
         bench,
-        caps,
         mode="vision",
         fit_target=192,
         ubatch=512,
@@ -1134,7 +1019,6 @@ def test_write_result_row_rejects_missing_chosen_ctx(monkeypatch: MonkeyPatch) -
             make_fit_result(8192, None, -1),
             False,
             None,
-            {"vision": False, "reasoning": False},
             mode="text",
             fit_target=128,
             ubatch=512,
@@ -1225,10 +1109,10 @@ def test_scan_and_bench_ubatch_scans_benchmarks_and_writes_outputs(
         _fit_target: int,
         _max_ctx: int | None,
         _is_moe: bool,
-        forced_ubatch: int | None = None,
+        ubatch: int,
     ) -> fit_bench.ScanStrategyResult:
-        assert forced_ubatch == 512
-        return [chosen], chosen, "selected", False
+        assert ubatch == 512
+        return [chosen], chosen, "selected"
 
     def fake_run_bench(
         _tag: str,
@@ -1276,7 +1160,6 @@ def test_scan_and_bench_ubatch_scans_benchmarks_and_writes_outputs(
         row_chosen: fit_bench.FitResult,
         is_moe: bool,
         bench_result: fit_bench.BenchResult | None,
-        row_caps: Capabilities,
         mode: str,
         fit_target: int,
         ubatch: int,
@@ -1285,7 +1168,6 @@ def test_scan_and_bench_ubatch_scans_benchmarks_and_writes_outputs(
         assert row_chosen == chosen
         assert is_moe is False
         assert bench_result is not None
-        assert row_caps == caps
         assert (mode, fit_target, ubatch, reps) == ("text", fit_bench.FIT_TARGET, 512, 3)
         calls["row"] += 1
 
@@ -1332,10 +1214,10 @@ def test_scan_and_bench_ubatch_scan_only_writes_cache_without_benchmark(
         _fit_target: int,
         _max_ctx: int | None,
         _is_moe: bool,
-        forced_ubatch: int | None = None,
+        ubatch: int,
     ) -> fit_bench.ScanStrategyResult:
-        del forced_ubatch
-        return [chosen], chosen, "selected", True
+        del ubatch
+        return [chosen], chosen, "selected"
 
     def fake_run_bench(
         _tag: str,
@@ -1353,7 +1235,6 @@ def test_scan_and_bench_ubatch_scan_only_writes_cache_without_benchmark(
         _chosen: fit_bench.FitResult,
         _is_moe: bool,
         _bench_result: fit_bench.BenchResult | None,
-        _caps: Capabilities,
         _mode: str,
         _fit_target: int,
         _ubatch: int,
@@ -1433,9 +1314,9 @@ def test_scan_and_bench_ubatch_scan_only_reuses_valid_cached_entry(
         _fit_target: int,
         _max_ctx: int | None,
         _is_moe: bool,
-        forced_ubatch: int | None = None,
+        ubatch: int,
     ) -> fit_bench.ScanStrategyResult:
-        del forced_ubatch
+        del ubatch
         raise AssertionError("choose_scan_strategy should not be called")
 
     def fail_run_bench(
@@ -1537,9 +1418,9 @@ def test_scan_and_bench_ubatch_skips_fresh_rebench_for_specific_ubatch(
         _fit_target: int,
         _max_ctx: int | None,
         _is_moe: bool,
-        forced_ubatch: int | None = None,
+        ubatch: int,
     ) -> fit_bench.ScanStrategyResult:
-        del forced_ubatch
+        del ubatch
         raise AssertionError("choose_scan_strategy should not be called")
 
     def fail_run_bench(
@@ -1558,7 +1439,6 @@ def test_scan_and_bench_ubatch_skips_fresh_rebench_for_specific_ubatch(
         _chosen: fit_bench.FitResult,
         _is_moe: bool,
         _bench_result: fit_bench.BenchResult | None,
-        _caps: Capabilities,
         _mode: str,
         _fit_target: int,
         _ubatch: int,
@@ -1625,9 +1505,9 @@ def test_benchmark_tag_reuses_cached_ubatch_without_resolving_max_ctx(
         _fit_target: int,
         _max_ctx: int | None,
         _is_moe: bool,
-        forced_ubatch: int | None = None,
+        ubatch: int,
     ) -> fit_bench.ScanStrategyResult:
-        del forced_ubatch
+        del ubatch
         raise AssertionError("choose_scan_strategy should not be called")
 
     def fake_run_bench(
@@ -1654,7 +1534,6 @@ def test_benchmark_tag_reuses_cached_ubatch_without_resolving_max_ctx(
         _chosen: fit_bench.FitResult,
         _is_moe: bool,
         _bench_result: fit_bench.BenchResult | None,
-        _caps: Capabilities,
         mode: str,
         fit_target: int,
         ubatch: int,
@@ -1747,14 +1626,13 @@ def test_benchmark_tag_reuses_cached_moe_ubatch_then_resolves_max_ctx_once(
         _fit_target: int,
         max_ctx: int | None,
         _is_moe: bool,
-        forced_ubatch: int | None = None,
+        ubatch: int,
     ) -> fit_bench.ScanStrategyResult:
         assert list(ctx_targets) == [5000, 10000, 20000]
         assert max_ctx == 20000
-        assert forced_ubatch is not None
-        scan_calls.append(forced_ubatch)
-        chosen = make_fit_result(20000, 20000, 84, ubatch=forced_ubatch)
-        return [chosen], chosen, "selected", True
+        scan_calls.append(ubatch)
+        chosen = make_fit_result(20000, 20000, 84, ubatch=ubatch)
+        return [chosen], chosen, "selected"
 
     def fake_run_bench(
         _tag: str,
@@ -1797,7 +1675,6 @@ def test_benchmark_tag_reuses_cached_moe_ubatch_then_resolves_max_ctx_once(
         _chosen: fit_bench.FitResult,
         _is_moe: bool,
         _bench_result: fit_bench.BenchResult | None,
-        _caps: Capabilities,
         mode: str,
         fit_target: int,
         ubatch: int,

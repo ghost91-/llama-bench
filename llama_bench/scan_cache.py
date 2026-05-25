@@ -41,16 +41,6 @@ def get_scan_entry(cache: ScanCache, tag: str, vision_mode: bool, ubatch: int) -
     return ubatch_sizes.get(str(ubatch))
 
 
-def get_best_ubatch_entry(
-    cache: ScanCache, tag: str, vision_mode: bool
-) -> tuple[int | None, ScanEntry | None]:
-    ubatch_sizes = get_all_ubatch_entries(cache, tag, vision_mode)
-    if not ubatch_sizes:
-        return None, None
-    best_ub = max(ubatch_sizes.keys(), key=int)
-    return int(best_ub), ubatch_sizes[best_ub]
-
-
 def get_reusable_scan_entry(
     cache: ScanCache,
     tag: str,

@@ -65,52 +65,14 @@ def test_set_and_get_scan_entries() -> None:
         "ot": "0,1",
         "scan_ts": "2026-01-01T00:00:00+00:00",
     }
-    _text_ubatch, text_entry = scan_cache.get_best_ubatch_entry(cache, tag, vision_mode=False)
-    _vision_ubatch, vision_entry = scan_cache.get_best_ubatch_entry(cache, tag, vision_mode=True)
-    assert text_entry is not None
-    assert vision_entry is not None
-    assert text_entry["ctx"] == 8000
-    assert vision_entry["ctx"] == 6000
+    assert scan_cache.get_scan_entry(cache, tag, vision_mode=False, ubatch=1024) is not None
+    assert scan_cache.get_scan_entry(cache, tag, vision_mode=True, ubatch=512) is not None
     assert scan_cache.get_capabilities(cache, tag) == {
         "vision": True,
         "reasoning": {"switchable": True, "efforts": "low"},
     }
     assert scan_cache.get_model_moe(cache, tag) is None
     assert cache[tag].get("mmproj") == "64M"
-
-
-def test_get_best_ubatch_entry_returns_highest_numeric_ubatch() -> None:
-    cache: ScanCache = {
-        "repo/model:Q4_K_M": {
-            "text": {
-                "ubatch_sizes": {
-                    "512": {
-                        "fit_target": 128,
-                        "ctx": 4096,
-                        "ngl": -1,
-                        "offload": 1,
-                        "ot": "0",
-                        "scan_ts": "2026-01-01T00:00:00+00:00",
-                    },
-                    "2048": {
-                        "fit_target": 128,
-                        "ctx": 8192,
-                        "ngl": -1,
-                        "offload": 2,
-                        "ot": "0,1",
-                        "scan_ts": "2026-01-02T00:00:00+00:00",
-                    },
-                }
-            }
-        }
-    }
-
-    ubatch, entry = scan_cache.get_best_ubatch_entry(cache, "repo/model:Q4_K_M", False)
-
-    assert ubatch == 2048
-    assert entry is not None
-    assert entry["ctx"] == 8192
-    assert scan_cache.get_best_ubatch_entry(cache, "missing:Q4_K_M", False) == (None, None)
 
 
 def test_get_reusable_scan_entry_requires_matching_fit_target_and_fresh_timestamp() -> None:
@@ -352,8 +314,8 @@ def test_scan_cache_missing_and_invalid_values_return_none() -> None:
         },
     )
 
-    assert scan_cache.get_best_ubatch_entry(cache, "missing:Q4_K_M", vision_mode=False) == (None, None)
-    assert scan_cache.get_best_ubatch_entry(cache, "repo/model:Q4_K_M", vision_mode=True) == (None, None)
+    assert scan_cache.get_scan_entry(cache, "missing:Q4_K_M", vision_mode=False, ubatch=512) is None
+    assert scan_cache.get_scan_entry(cache, "repo/model:Q4_K_M", vision_mode=True, ubatch=512) is None
     assert scan_cache.get_capabilities(cache, "repo/model:Q4_K_M") is None
     assert scan_cache.get_model_moe(cache, "repo/model:Q4_K_M") is None
 

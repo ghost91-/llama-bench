@@ -12,9 +12,6 @@ __pycache__/
 # Runtime data
 logs/
 *.png
-scan-cache*.json
-selection-report*.md
-selection-report*.txt
 
 # Agents
 .agents/

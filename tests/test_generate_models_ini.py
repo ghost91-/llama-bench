@@ -1,13 +1,15 @@
+# pyright: reportPrivateUsage=false
+
 import csv
 from pathlib import Path
-from typing import Literal
+from typing import Literal, cast
 
+import pytest
 from pytest import CaptureFixture, MonkeyPatch
 
 import generate_models_ini
-from llama_bench.consolidation import ConfigKey, LabelledConfig, ReportEntry
 from llama_bench.results import PP_COL, TG_COL
-from llama_bench.selection import Candidate, ProfileSelection, Quality, ScoredCandidate
+from llama_bench.schema_types import ScanCache
 
 
 def _fake_gguf_path(tag: str) -> Path:
@@ -31,109 +33,48 @@ def _parse_ini_sections(content: str) -> dict[str, dict[str, str]]:
     return sections
 
 
-def _candidate(
+def _bench_config(
     *,
     group: str = "foo-group",
-    model: str = "Foo",
-    quant: str = "Q4_K_M",
+    repo: str = "unsloth/Foo-GGUF",
     provider: str = "unsloth",
+    quant: str = "Q4_K_M",
     mode: Literal["text", "vision"] = "text",
-    ctx: int = 128_000,
     ubatch: int = 512,
+    ctx: int = 128_000,
     pp_tps: float = 100.0,
     tg_tps: float = 20.0,
-) -> Candidate:
-    return Candidate(
+    model: str = "Foo",
+    fit_target: int | None = 128,
+) -> generate_models_ini.BenchConfig:
+    return generate_models_ini.BenchConfig(
         group=group,
         model=model,
-        quant=quant,
+        repo=repo,
         provider=provider,
+        quant=quant,
         mode=mode,
-        ctx=ctx,
         ubatch=ubatch,
+        ctx=ctx,
+        fit_target=fit_target,
         pp_tps=pp_tps,
         tg_tps=tg_tps,
-        params=8_000_000_000,
-        size_gib=4.0,
-        kld=None,
     )
 
 
-def _scored(candidate: Candidate, quality_score: float = 0.75) -> ScoredCandidate:
-    return ScoredCandidate(
-        candidate=candidate,
-        quality=Quality(score=quality_score, source="quant-proxy", kld=None),
-        score=0.8,
-    )
-
-
-def _selection(
-    group: str = "foo-group",
-    profile: str = "agentic-coding",
-    scored: ScoredCandidate | None = None,
-) -> ProfileSelection:
-    return ProfileSelection(
-        group=group,
-        profile=profile,
-        recommendation=scored,
-        alternatives={},
-        skipped_reason=None if scored else "no results",
-    )
-
-
-def _labelled_config(
-    *,
-    label: str = "foo-group-agentic",
-    description: str = "Agentic coding default. text, ctx 128k, pp 100, tg 20.",
-    group: str = "foo-group",
-    provider: str = "unsloth",
-    quant: str = "Q4_K_M",
-    mode: Literal["text", "vision"] = "text",
-    ubatch: int = 512,
-    ctx: int = 128_000,
-    pp_tps: float = 100.0,
-    tg_tps: float = 20.0,
-    model: str = "Foo",
-) -> LabelledConfig:
-    cand = _candidate(
-        group=group, model=model, quant=quant, provider=provider, mode=mode,
-        ctx=ctx, ubatch=ubatch, pp_tps=pp_tps, tg_tps=tg_tps,
-    )
-    scored = _scored(cand)
-    sel = _selection(group=group, scored=scored)
-    entry = ReportEntry(sel, "recommended", scored)
-    key: ConfigKey = (group, provider, quant, mode, ubatch, ctx, pp_tps, tg_tps)
-    return LabelledConfig(label=label, description=description, key=key, entries=(entry,))
-
-
-def test_build_ini_sections_emits_section_per_labelled_config(monkeypatch: MonkeyPatch) -> None:
+def test_build_ini_sections_emits_section_per_bench_config(monkeypatch: MonkeyPatch) -> None:
     monkeypatch.setattr(generate_models_ini, "SAMPLER_CONFIG", {"foo-group": {"temp": "0.7"}})
     configs = [
-        _labelled_config(
-            label="foo-group-agentic",
-            group="foo-group",
-            quant="Q4_K_M",
-            ubatch=512,
-            ctx=128_000,
-        ),
+        _bench_config(group="foo-group", quant="Q4_K_M", ubatch=512, ctx=128_000),
     ]
-    fit_lookup: generate_models_ini.FitLookup = {
-        ("Foo", "Q4_K_M", "unsloth", "text", 512, 128_000): 128,
-    }
-    repo_lookup: dict[tuple[str, str, str], str] = {
-        ("Foo", "Q4_K_M", "unsloth"): "unsloth/Foo-GGUF",
-    }
-    warnings: list[str] = []
 
     sections = generate_models_ini.build_ini_sections(
-        configs, fit_lookup, repo_lookup,
+        configs,
         gguf_exists_fn=lambda _tag: Path("/tmp/model.gguf"),
-        warn=warnings.append,
     )
 
-    assert warnings == []
     assert len(sections) == 1
-    assert sections[0]["name"] == "foo-group-agentic"
+    assert sections[0]["name"] == "foo-group-unsloth-q4-k-m-text-ub512"
     assert sections[0]["comment"] != ""
     props = dict(sections[0]["props"])
     assert props["hf"] == "unsloth/Foo-GGUF:Q4_K_M"
@@ -147,22 +88,16 @@ def test_build_ini_sections_emits_section_per_labelled_config(monkeypatch: Monke
 def test_build_ini_sections_adds_vision_props_for_vision_mode(monkeypatch: MonkeyPatch) -> None:
     monkeypatch.setattr(generate_models_ini, "SAMPLER_CONFIG", {})
     configs = [
-        _labelled_config(
-            label="foo-group-vision",
+        _bench_config(
             group="foo-group",
             mode="vision",
             ctx=64_000,
+            fit_target=192,
         ),
     ]
-    fit_lookup: generate_models_ini.FitLookup = {
-        ("Foo", "Q4_K_M", "unsloth", "vision", 512, 64_000): 192,
-    }
-    repo_lookup: dict[tuple[str, str, str], str] = {
-        ("Foo", "Q4_K_M", "unsloth"): "unsloth/Foo-GGUF",
-    }
 
     sections = generate_models_ini.build_ini_sections(
-        configs, fit_lookup, repo_lookup,
+        configs,
         gguf_exists_fn=lambda _tag: Path("/tmp/model.gguf"),
     )
 
@@ -176,17 +111,11 @@ def test_build_ini_sections_adds_vision_props_for_vision_mode(monkeypatch: Monke
 def test_build_ini_sections_text_mode_has_no_mmproj(monkeypatch: MonkeyPatch) -> None:
     monkeypatch.setattr(generate_models_ini, "SAMPLER_CONFIG", {})
     configs = [
-        _labelled_config(label="foo-group-chat", mode="text"),
+        _bench_config(mode="text"),
     ]
-    fit_lookup: generate_models_ini.FitLookup = {
-        ("Foo", "Q4_K_M", "unsloth", "text", 512, 128_000): 128,
-    }
-    repo_lookup: dict[tuple[str, str, str], str] = {
-        ("Foo", "Q4_K_M", "unsloth"): "unsloth/Foo-GGUF",
-    }
 
     sections = generate_models_ini.build_ini_sections(
-        configs, fit_lookup, repo_lookup,
+        configs,
         gguf_exists_fn=lambda _tag: Path("/tmp/model.gguf"),
     )
 
@@ -195,44 +124,38 @@ def test_build_ini_sections_text_mode_has_no_mmproj(monkeypatch: MonkeyPatch) ->
     assert "mmproj-offload" not in props
 
 
-def test_build_ini_sections_warns_on_missing_repo() -> None:
+def test_build_ini_sections_orders_by_group_then_provider(monkeypatch: MonkeyPatch) -> None:
+    monkeypatch.setattr(generate_models_ini, "SAMPLER_CONFIG", {})
     configs = [
-        _labelled_config(model="Missing", quant="Q5_K_M", provider="unknown"),
+        _bench_config(group="z-group", provider="unsloth", repo="unsloth/Foo-GGUF"),
+        _bench_config(group="a-group", provider="unsloth", repo="unsloth/Foo-GGUF"),
+        _bench_config(group="a-group", provider="bartowski", repo="bartowski/Foo-GGUF"),
     ]
-    fit_lookup: generate_models_ini.FitLookup = {}
-    repo_lookup: dict[tuple[str, str, str], str] = {}
-    warnings: list[str] = []
 
     sections = generate_models_ini.build_ini_sections(
-        configs, fit_lookup, repo_lookup,
+        configs,
         gguf_exists_fn=lambda _tag: Path("/tmp/model.gguf"),
-        warn=warnings.append,
     )
 
-    assert sections == []
-    assert any("no repo" in w for w in warnings)
-
-
-def test_build_ini_sections_warns_on_missing_gguf() -> None:
-    configs = [
-        _labelled_config(),
+    assert [section["name"] for section in sections] == [
+        "a-group-bartowski-q4-k-m-text-ub512",
+        "a-group-unsloth-q4-k-m-text-ub512",
+        "z-group-unsloth-q4-k-m-text-ub512",
     ]
-    fit_lookup: generate_models_ini.FitLookup = {
-        ("Foo", "Q4_K_M", "unsloth", "text", 512, 128_000): 128,
-    }
-    repo_lookup: dict[tuple[str, str, str], str] = {
-        ("Foo", "Q4_K_M", "unsloth"): "unsloth/Foo-GGUF",
-    }
-    warnings: list[str] = []
 
-    sections = generate_models_ini.build_ini_sections(
-        configs, fit_lookup, repo_lookup,
-        gguf_exists_fn=lambda _tag: None,
-        warn=warnings.append,
-    )
 
-    assert sections == []
-    assert any("not found on disk" in w for w in warnings)
+def test_build_ini_sections_fails_on_missing_gguf() -> None:
+    configs = [
+        _bench_config(),
+    ]
+
+    with pytest.raises(generate_models_ini.MissingSelectedModelError) as exc_info:
+        generate_models_ini.build_ini_sections(
+            configs,
+            gguf_exists_fn=lambda _tag: None,
+        )
+
+    assert "not found on disk" in str(exc_info.value)
 
 
 def test_render_ini_includes_comments_and_sections() -> None:
@@ -299,7 +222,59 @@ def test_format_sampler_settings_skips_keys(monkeypatch: MonkeyPatch) -> None:
     ]
 
 
-def test_load_fit_lookup_reads_results_csv(tmp_path: Path) -> None:
+def test_load_ini_selections_reads_models_toml(tmp_path: Path) -> None:
+    models_file = tmp_path / "models.toml"
+    models_file.write_text(
+        """
+[[models]]
+repo = "unsloth/Foo-GGUF"
+quant = "Q4_K_M"
+group = "foo-group"
+ini = [
+  { mode = "text", ubatch = 512 },
+  { mode = "vision", ubatch = 2048 },
+]
+""".lstrip()
+    )
+
+    selections = generate_models_ini.load_ini_selections(str(models_file))
+
+    assert selections == [
+        generate_models_ini.IniSelection(
+            "foo-group", "Foo", "unsloth/Foo-GGUF", "unsloth", "Q4_K_M", "text", 512,
+        ),
+        generate_models_ini.IniSelection(
+            "foo-group", "Foo", "unsloth/Foo-GGUF", "unsloth", "Q4_K_M", "vision", 2048,
+        ),
+    ]
+
+
+def test_load_ini_selections_rejects_invalid_fields(tmp_path: Path) -> None:
+    models_file = tmp_path / "models.toml"
+    models_file.write_text(
+        """
+[[models]]
+repo = "unsloth/Foo-GGUF"
+quant = "Q4_K_M"
+group = "foo-group"
+ini = [{ mode = "text", ubatch = 512, ctx = 128000 }]
+""".lstrip()
+    )
+
+    with pytest.raises(generate_models_ini.InvalidSelectionError) as exc_info:
+        generate_models_ini.load_ini_selections(str(models_file))
+
+    assert "unknown fields: ctx" in str(exc_info.value)
+
+
+def test_load_bench_configs_rejects_duplicate_selection_rows(
+    monkeypatch: MonkeyPatch, tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(
+        generate_models_ini,
+        "load_models",
+        lambda: [("unsloth/Foo-GGUF", "Q4_K_M", "foo-group")],
+    )
     results_file = tmp_path / "fit-bench-results.csv"
     with results_file.open("w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=[
@@ -312,26 +287,125 @@ def test_load_fit_lookup_reads_results_csv(tmp_path: Path) -> None:
             "mode": "text", "fit_target": "128", "ctx": "50k", "ubatch": "512",
             PP_COL: "1000.0", TG_COL: "100.0",
         })
+        writer.writerow({
+            "model": "Foo", "quant": "Q4_K_M", "provider": "unsloth",
+            "mode": "text", "fit_target": "192", "ctx": "64k", "ubatch": "512",
+            PP_COL: "1100.0", TG_COL: "110.0",
+        })
 
-    lookup = generate_models_ini.load_fit_lookup(str(results_file))
+    with pytest.raises(generate_models_ini.InvalidSelectionError) as exc_info:
+        generate_models_ini.load_bench_configs(str(results_file))
 
-    assert lookup[("Foo", "Q4_K_M", "unsloth", "text", 512, 50000)] == 128
+    assert "Duplicate benchmark rows" in str(exc_info.value)
+
+
+def test_resolve_manual_selections_falls_back_to_scan_cache(monkeypatch: MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        generate_models_ini,
+        "load_scan_cache",
+        lambda: {
+            "unsloth/Foo-GGUF:Q4_K_M": {
+                "text": {"ubatch_sizes": {"512": {"ctx": 64000, "fit_target": 128}}},
+            },
+        },
+    )
+    selection = generate_models_ini.IniSelection(
+        "foo-group", "Foo", "unsloth/Foo-GGUF", "unsloth", "Q4_K_M", "text", 512,
+    )
+
+    configs = generate_models_ini.resolve_manual_selections([selection], [])
+
+    assert configs == [
+        generate_models_ini.BenchConfig(
+            "foo-group",
+            "Foo",
+            "unsloth/Foo-GGUF",
+            "unsloth",
+            "Q4_K_M",
+            "text",
+            512,
+            64000,
+            128,
+            0.0,
+            0.0,
+        )
+    ]
+
+
+def test_resolve_manual_selections_matches_model_name() -> None:
+    configs = [
+        _bench_config(model="Foo"),
+        _bench_config(model="Bar"),
+    ]
+    selection = generate_models_ini.IniSelection(
+        "foo-group", "Bar", "unsloth/Bar-GGUF", "unsloth", "Q4_K_M", "text", 512,
+    )
+
+    selected = generate_models_ini.resolve_manual_selections([selection], configs)
+
+    assert [config.model for config in selected] == ["Bar"]
+
+
+def test_add_free_vision_configs_adds_matching_bench_config() -> None:
+    text_config = _bench_config(mode="text", ubatch=512, ctx=128_000, fit_target=256)
+    vision_config = _bench_config(mode="vision", ubatch=512, ctx=128_000, fit_target=453)
+
+    configs = generate_models_ini.add_free_vision_configs([text_config], [text_config, vision_config])
+
+    assert configs == [text_config, vision_config]
+
+
+def test_add_free_vision_configs_ignores_different_ctx_or_ubatch(monkeypatch: MonkeyPatch) -> None:
+    monkeypatch.setattr(generate_models_ini, "load_scan_cache", lambda: cast(ScanCache, {}))
+    text_config = _bench_config(mode="text", ubatch=512, ctx=128_000, fit_target=256)
+    different_ctx = _bench_config(mode="vision", ubatch=512, ctx=100_000, fit_target=453)
+    different_ubatch = _bench_config(mode="vision", ubatch=1024, ctx=128_000, fit_target=453)
+
+    configs = generate_models_ini.add_free_vision_configs([text_config], [different_ctx, different_ubatch])
+
+    assert configs == [text_config]
+
+
+def test_add_free_vision_configs_falls_back_to_matching_scan_cache(monkeypatch: MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        generate_models_ini,
+        "load_scan_cache",
+        lambda: {
+            "unsloth/Foo-GGUF:Q4_K_M": {
+                "vision": {"ubatch_sizes": {"512": {"ctx": 128000, "fit_target": 453}}},
+            },
+        },
+    )
+    text_config = _bench_config(mode="text", ubatch=512, ctx=128_000, fit_target=256)
+
+    configs = generate_models_ini.add_free_vision_configs([text_config], [])
+
+    assert configs == [
+        text_config,
+        generate_models_ini.BenchConfig(
+            "foo-group",
+            "Foo",
+            "unsloth/Foo-GGUF",
+            "unsloth",
+            "Q4_K_M",
+            "vision",
+            512,
+            128000,
+            453,
+            0.0,
+            0.0,
+        ),
+    ]
 
 
 def test_batch_size_uses_server_batch_rule(monkeypatch: MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setattr(generate_models_ini, "SAMPLER_CONFIG", {})
     configs = [
-        _labelled_config(label="moe-group-chat", group="moe", ubatch=2048),
+        _bench_config(group="moe", ubatch=2048),
     ]
-    fit_lookup: generate_models_ini.FitLookup = {
-        ("Foo", "Q4_K_M", "unsloth", "text", 2048, 128_000): 128,
-    }
-    repo_lookup: dict[tuple[str, str, str], str] = {
-        ("Foo", "Q4_K_M", "unsloth"): "unsloth/Foo-GGUF",
-    }
 
     sections = generate_models_ini.build_ini_sections(
-        configs, fit_lookup, repo_lookup,
+        configs,
         gguf_exists_fn=lambda _tag: Path("/tmp/model.gguf"),
     )
 
@@ -346,22 +420,14 @@ def test_generate_ini_dry_run_prints_content(
     monkeypatch.setattr(generate_models_ini, "SAMPLER_CONFIG", {})
     monkeypatch.setattr(generate_models_ini, "find_local_gguf_path", _fake_gguf_path)
     configs = [
-        _labelled_config(label="foo-group-agentic", quant="Q4_K_M", ubatch=512, ctx=128_000),
+        _bench_config(quant="Q4_K_M", ubatch=512, ctx=128_000),
     ]
-    fit_lookup: generate_models_ini.FitLookup = {
-        ("Foo", "Q4_K_M", "unsloth", "text", 512, 128_000): 128,
-    }
-    repo_lookup: dict[tuple[str, str, str], str] = {
-        ("Foo", "Q4_K_M", "unsloth"): "unsloth/Foo-GGUF",
-    }
 
-    generate_models_ini.generate_ini(
-        configs, fit_lookup, repo_lookup, "ignored.ini", dry_run=True
-    )
+    generate_models_ini.generate_ini(configs, "ignored.ini", dry_run=True)
 
     captured = capsys.readouterr()
     assert "version = 1" in captured.out
-    assert "[foo-group-agentic]" in captured.out
+    assert "[foo-group-unsloth-q4-k-m-text-ub512]" in captured.out
     assert "hf = unsloth/Foo-GGUF:Q4_K_M" in captured.out
 
 
@@ -372,37 +438,25 @@ def test_generate_ini_writes_file(
     monkeypatch.setattr(generate_models_ini, "find_local_gguf_path", _fake_gguf_path)
     output = tmp_path / "models.ini"
     configs = [
-        _labelled_config(label="foo-group-agentic", quant="Q4_K_M", ubatch=512, ctx=128_000),
+        _bench_config(quant="Q4_K_M", ubatch=512, ctx=128_000),
     ]
-    fit_lookup: generate_models_ini.FitLookup = {
-        ("Foo", "Q4_K_M", "unsloth", "text", 512, 128_000): 128,
-    }
-    repo_lookup: dict[tuple[str, str, str], str] = {
-        ("Foo", "Q4_K_M", "unsloth"): "unsloth/Foo-GGUF",
-    }
 
-    generate_models_ini.generate_ini(
-        configs, fit_lookup, repo_lookup, str(output), dry_run=False
-    )
+    generate_models_ini.generate_ini(configs, str(output), dry_run=False)
 
     content = output.read_text()
     sections = _parse_ini_sections(content)
-    assert "foo-group-agentic" in sections
-    assert sections["foo-group-agentic"]["hf"] == "unsloth/Foo-GGUF:Q4_K_M"
+    assert "foo-group-unsloth-q4-k-m-text-ub512" in sections
+    assert sections["foo-group-unsloth-q4-k-m-text-ub512"]["hf"] == "unsloth/Foo-GGUF:Q4_K_M"
 
 
 def test_fit_target_missing_gracefully_omitted(monkeypatch: MonkeyPatch) -> None:
     monkeypatch.setattr(generate_models_ini, "SAMPLER_CONFIG", {})
     configs = [
-        _labelled_config(label="foo-group-chat", ctx=64_000),
+        _bench_config(ctx=64_000, fit_target=None),
     ]
-    fit_lookup: generate_models_ini.FitLookup = {}
-    repo_lookup: dict[tuple[str, str, str], str] = {
-        ("Foo", "Q4_K_M", "unsloth"): "unsloth/Foo-GGUF",
-    }
 
     sections = generate_models_ini.build_ini_sections(
-        configs, fit_lookup, repo_lookup,
+        configs,
         gguf_exists_fn=lambda _tag: Path("/tmp/model.gguf"),
     )
 
@@ -413,27 +467,20 @@ def test_fit_target_missing_gracefully_omitted(monkeypatch: MonkeyPatch) -> None
 
 def test_vision_merged_into_text_section_when_config_matches(monkeypatch: MonkeyPatch) -> None:
     monkeypatch.setattr(generate_models_ini, "SAMPLER_CONFIG", {})
-    text_config = _labelled_config(
-        label="foo-group-agentic", mode="text", ubatch=512, ctx=128_000,
+    text_config = _bench_config(
+        mode="text", ubatch=512, ctx=128_000, fit_target=256,
     )
-    vision_config = _labelled_config(
-        label="foo-group-vision", mode="vision", ubatch=512, ctx=128_000,
+    vision_config = _bench_config(
+        mode="vision", ubatch=512, ctx=128_000, fit_target=453,
     )
-    fit_lookup: generate_models_ini.FitLookup = {
-        ("Foo", "Q4_K_M", "unsloth", "text", 512, 128_000): 256,
-        ("Foo", "Q4_K_M", "unsloth", "vision", 512, 128_000): 453,
-    }
-    repo_lookup: dict[tuple[str, str, str], str] = {
-        ("Foo", "Q4_K_M", "unsloth"): "unsloth/Foo-GGUF",
-    }
 
     sections = generate_models_ini.build_ini_sections(
-        [text_config, vision_config], fit_lookup, repo_lookup,
+        [text_config, vision_config],
         gguf_exists_fn=lambda _tag: Path("/tmp/model.gguf"),
     )
 
     assert len(sections) == 1
-    assert sections[0]["name"] == "foo-group-agentic"
+    assert sections[0]["name"] == "foo-group-unsloth-q4-k-m-text-ub512"
     props = dict(sections[0]["props"])
     assert props["fit-target"] == "453"
     assert props["mmproj-auto"] == "on"
@@ -442,22 +489,15 @@ def test_vision_merged_into_text_section_when_config_matches(monkeypatch: Monkey
 
 def test_vision_section_kept_separate_when_config_differs(monkeypatch: MonkeyPatch) -> None:
     monkeypatch.setattr(generate_models_ini, "SAMPLER_CONFIG", {})
-    text_config = _labelled_config(
-        label="foo-group-agentic", mode="text", ubatch=2048, ctx=100_000,
+    text_config = _bench_config(
+        mode="text", ubatch=2048, ctx=100_000, fit_target=256,
     )
-    vision_config = _labelled_config(
-        label="foo-group-vision", mode="vision", ubatch=512, ctx=100_000,
+    vision_config = _bench_config(
+        mode="vision", ubatch=512, ctx=100_000, fit_target=453,
     )
-    fit_lookup: generate_models_ini.FitLookup = {
-        ("Foo", "Q4_K_M", "unsloth", "text", 2048, 100_000): 256,
-        ("Foo", "Q4_K_M", "unsloth", "vision", 512, 100_000): 453,
-    }
-    repo_lookup: dict[tuple[str, str, str], str] = {
-        ("Foo", "Q4_K_M", "unsloth"): "unsloth/Foo-GGUF",
-    }
 
     sections = generate_models_ini.build_ini_sections(
-        [text_config, vision_config], fit_lookup, repo_lookup,
+        [text_config, vision_config],
         gguf_exists_fn=lambda _tag: Path("/tmp/model.gguf"),
     )
 
@@ -468,3 +508,24 @@ def test_vision_section_kept_separate_when_config_differs(monkeypatch: MonkeyPat
     assert vision_props["mmproj-auto"] == "on"
     assert text_props["ubatch-size"] == "2048"
     assert vision_props["ubatch-size"] == "512"
+
+
+def test_text_sections_with_same_fit_shape_are_not_merged(monkeypatch: MonkeyPatch) -> None:
+    monkeypatch.setattr(generate_models_ini, "SAMPLER_CONFIG", {})
+    first_text = _bench_config(
+        mode="text", ubatch=512, ctx=128_000, pp_tps=100.0, tg_tps=20.0,
+    )
+    second_text = _bench_config(
+        mode="text", ubatch=512, ctx=128_000, pp_tps=101.0, tg_tps=21.0,
+    )
+
+    sections = generate_models_ini.build_ini_sections(
+        [first_text, second_text],
+        gguf_exists_fn=lambda _tag: Path("/tmp/model.gguf"),
+    )
+
+    assert [section["name"] for section in sections] == [
+        "foo-group-unsloth-q4-k-m-text-ub512",
+        "foo-group-unsloth-q4-k-m-text-ub512-2",
+    ]
+    assert all("mmproj-auto" not in dict(section["props"]) for section in sections)

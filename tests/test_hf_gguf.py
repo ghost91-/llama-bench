@@ -91,6 +91,83 @@ def test_find_best_mmproj_file_handles_absent_sibling_child_and_tied_projectors(
     )
 
 
+def test_split_gguf_path_handles_bpw_suffixed_quant_tags() -> None:
+    assert hf_gguf.split_gguf_path("Qwen3.6-35B-A3B-IQ2_S-2.17bpw.gguf") == (
+        "Qwen3.6-35B-A3B-IQ2_S-2.17bpw",
+        "IQ2_S-2.17BPW",
+        1,
+        1,
+    )
+    assert hf_gguf.split_gguf_path("Qwen3.5-9B-IQ4_XS-4.43bpw.gguf") == (
+        "Qwen3.5-9B-IQ4_XS-4.43bpw",
+        "IQ4_XS-4.43BPW",
+        1,
+        1,
+    )
+    assert hf_gguf.split_gguf_path("Qwen3.5-9B-Q5_K_S-5.10bpw.gguf") == (
+        "Qwen3.5-9B-Q5_K_S-5.10bpw",
+        "Q5_K_S-5.10BPW",
+        1,
+        1,
+    )
+    assert hf_gguf.split_gguf_path("Qwen3.6-35B-A3B-IQ3_S-3.00bpw-00001-of-00002.gguf") == (
+        "Qwen3.6-35B-A3B-IQ3_S-3.00bpw",
+        "IQ3_S-3.00BPW",
+        1,
+        2,
+    )
+
+
+def test_find_matching_model_files_matches_bpw_suffixed_files() -> None:
+    repo_files = [
+        "Qwen3.6-35B-A3B-IQ2_S-2.17bpw.gguf",
+        "Qwen3.6-35B-A3B-IQ3_S-3.00bpw.gguf",
+        "Qwen3.6-35B-A3B-IQ4_XS-4.15bpw.gguf",
+        "mmproj-Qwen3.6-35B-A3B.gguf",
+    ]
+
+    assert hf_gguf.find_matching_model_files(repo_files, "IQ3_S-3.00bpw") == [
+        "Qwen3.6-35B-A3B-IQ3_S-3.00bpw.gguf",
+    ]
+    assert hf_gguf.find_matching_model_files(repo_files, "IQ2_S-2.17bpw") == [
+        "Qwen3.6-35B-A3B-IQ2_S-2.17bpw.gguf",
+    ]
+
+
+def test_split_gguf_path_handles_apex_quant_tags() -> None:
+    assert hf_gguf.split_gguf_path("Qwen3.6-35B-A3B-APEX-I-Compact.gguf") == (
+        "Qwen3.6-35B-A3B-APEX-I-Compact",
+        "APEX-I-COMPACT",
+        1,
+        1,
+    )
+    assert hf_gguf.split_gguf_path("Qwen3.6-35B-A3B-APEX-I-Balanced.gguf") == (
+        "Qwen3.6-35B-A3B-APEX-I-Balanced",
+        "APEX-I-BALANCED",
+        1,
+        1,
+    )
+    assert hf_gguf.split_gguf_path("Qwen3.6-35B-A3B-APEX-Compact.gguf") == (
+        "Qwen3.6-35B-A3B-APEX-Compact",
+        "APEX-COMPACT",
+        1,
+        1,
+    )
+
+
+def test_find_matching_model_files_matches_apex_files() -> None:
+    repo_files = [
+        "Qwen3.6-35B-A3B-APEX-I-Compact.gguf",
+        "Qwen3.6-35B-A3B-APEX-I-Quality.gguf",
+        "Qwen3.6-35B-A3B-APEX-I-Balanced.gguf",
+        "mmproj.gguf",
+    ]
+
+    assert hf_gguf.find_matching_model_files(repo_files, "APEX-I-Compact") == [
+        "Qwen3.6-35B-A3B-APEX-I-Compact.gguf",
+    ]
+
+
 def test_extract_quant_bits_returns_first_number_from_quant_tag() -> None:
     assert hf_gguf.extract_quant_bits("model-Q4_K_M.gguf") == 4
     assert hf_gguf.extract_quant_bits("model-UD-IQ2_XXS.gguf") == 2

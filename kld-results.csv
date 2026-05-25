@@ -97,6 +97,13 @@ Qwen3.6-35B-A3B,IQ3_S,AesSedai,0.0844
 Qwen3.6-35B-A3B,IQ4_XS,AesSedai,0.0327
 Qwen3.6-35B-A3B,Q4_K_M,AesSedai,0.0122
 Qwen3.6-35B-A3B,Q5_K_M,AesSedai,0.00671
+Qwen3.6-35B-A3B,APEX-I-Mini,mudler,0.0981
+Qwen3.6-35B-A3B,APEX-Compact,mudler,0.0594
+Qwen3.6-35B-A3B,APEX-I-Compact,mudler,0.0431
+Qwen3.6-35B-A3B,APEX-Quality,mudler,0.0146
+Qwen3.6-35B-A3B,APEX-I-Quality,mudler,0.0131
+Qwen3.6-35B-A3B,APEX-Balanced,mudler,0.0105
+Qwen3.6-35B-A3B,APEX-I-Balanced,mudler,0.00897
 Qwen3.5-122B-A10B,IQ3_S,AesSedai,0.0613
 Qwen3.5-122B-A10B,IQ4_XS,AesSedai,0.0235
 Qwen3.5-122B-A10B,Q4_K_M,AesSedai,0.0096

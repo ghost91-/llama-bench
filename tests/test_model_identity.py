@@ -41,6 +41,7 @@ def test_identity_from_tag_allows_missing_quant_only_when_requested() -> None:
         ("mistralai_Mistral-Small-it:Q4_K_M", "Mistral-Small"),
         ("nvidia_Nemotron-GGUF:Q4_K_M", "Nemotron"),
         ("NVIDIA-Nemotron-GGUF:Q4_K_M", "Nemotron"),
+        ("mudler/Qwen3.6-35B-A3B-APEX-GGUF:APEX-I-Compact", "Qwen3.6-35B-A3B"),
     ],
 )
 def test_display_name_normalises_known_prefixes_and_suffixes(tag: str, display: str) -> None:

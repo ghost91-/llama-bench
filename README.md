@@ -8,16 +8,14 @@ Benchmark [llama.cpp](https://github.com/ggml-org/llama.cpp) GGUF models to find
 |--------|---------|
 | `fit_bench.py` | Benchmark fit-params and speed at various context sizes; pick the best |
 | `download_models.py` | Download GGUF files to the HuggingFace cache |
-| `generate_models_ini.py` | Regenerate `models.ini` from benchmark results |
-| `sampler_config.py` | Per-model-family sampler settings (temperature, top-k, etc.) |
-| `gguf_utils.py` | Read GGUF metadata: capabilities, mmproj size, max context |
-| `results.py` | Read, write, format, and sort the results table |
+| `generate_models_ini.py` | Regenerate `models.ini` from manual `models.toml` `ini` selections |
+| `plot_metrics.py` | Plot quality, context, and speed trade-offs |
 
 Run any script with `uv run`:
 
 ```
 uv run fit_bench.py unsloth/Qwen3.5-9B-GGUF:Q4_K_M
-uv run fit_bench.py --all --vision
+uv run fit_bench.py --vision
 uv run download_models.py --group qwen3.5
 uv run generate_models_ini.py --dry-run
 ```
@@ -31,7 +29,7 @@ uv run generate_models_ini.py --dry-run
 3. Picks the best context by two rules:
    - **Dense models**: highest context that keeps all layers on GPU (`ngl = all`)
    - **MoE models**: highest context that keeps the maximum achievable `ngl`
-4. Benchmarks the chosen config with `llama-bench` (pp2048 + tg512)
+4. Benchmarks the chosen config with `llama-bench` (pp4096 + tg128)
 5. Appends the result to `fit-bench-results.csv`
 
 On this laptop, `fit_bench.py` reserves `256` MiB of VRAM for non-model use. That matches the hybrid-GPU setup where the RTX 4070 Laptop dGPU stays nearly idle until workloads are launched on it.
@@ -40,11 +38,11 @@ With `--vision`, the fit-target becomes `256 + mmproj size`, accounting for the 
 
 ## Results
 
-`fit-bench-results.csv` holds one row per model/quant/provider combination. Vision-mode numbers appear as separate columns (`v` prefix), not separate rows.
+`fit-bench-results.csv` holds one row per model/quant/provider/mode/ubatch combination.
 
 ## models.ini generation
 
-`generate_models_ini.py` reads the results table and `sampler_config.py`, checks which models exist on disk, and writes `~/.config/llama.cpp/models.ini`. For vision-capable models:
+`generate_models_ini.py` reads explicit `ini = [...]` entries from `models.toml`, resolves their context/fit target from benchmark results or scan cache, checks that the selected GGUF files exist on disk, and writes `~/.config/llama.cpp/models.ini`. For vision-capable models:
 
 - If vision and text configs match: adds `mmproj-auto = on` to the text section (mmproj fits without trade-offs)
 - If they differ: creates a separate `:vision` section with reduced context and a higher `fit-target` (`256 + mmproj size` in MiB)
@@ -62,17 +60,15 @@ Requires `llama-fit-params`, `llama-bench`, and `llama-server` on PATH (install 
 
 ```
 llama-bench/
-  fit_bench.py            main benchmark script
-  gguf_utils.py           GGUF metadata reader
-  results.py              results table I/O
-  download_models.py      HF cache downloader
-  generate_models_ini.py  models.ini generator
-  sampler_config.py       per-family sampler settings
-  fit-bench-results.csv   benchmark results (canonical data)
-  pyproject.toml          project config
-  uv.lock                 dependency lock
-  .venv/                  Python environment
-  logs/                   benchmark run logs
+  fit_bench.py               main benchmark script
+  plot_metrics.py            benchmark plot generator
+  generate_models_ini.py     models.ini generator
+  llama_bench/               shared helpers
+  models.toml                target model list and manual INI selections
+  fit-bench-results.csv      benchmark results
+  kld-results.csv            KLD quality measurements
+  scan-cache.json            scan cache
+  logs/                      benchmark run logs
 ```
 
 External files:
