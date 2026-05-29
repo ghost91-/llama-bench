@@ -1,5 +1,6 @@
 import json
 import os
+import tempfile
 from datetime import datetime
 from typing import cast
 
@@ -31,9 +32,19 @@ def load_scan_cache() -> ScanCache:
 def save_scan_cache(cache: ScanCache) -> None:
     valid_tags = set(load_tags())
     pruned = {tag: entry for tag, entry in cache.items() if tag in valid_tags}
-    with open(SCAN_CACHE_FILE, "w") as f:
-        json.dump(pruned, f, indent=2)
-        f.write("\n")
+    cache_dir = os.path.dirname(SCAN_CACHE_FILE)
+    fd, tmp_path = tempfile.mkstemp(dir=cache_dir, suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w") as f:
+            json.dump(pruned, f, indent=2)
+            f.write("\n")
+        os.replace(tmp_path, SCAN_CACHE_FILE)
+    except BaseException:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
 
 
 def get_scan_entry(cache: ScanCache, tag: str, vision_mode: bool, ubatch: int) -> ScanEntry | None:
@@ -125,6 +136,19 @@ def get_model_moe(cache: ScanCache, tag: str) -> bool | None:
 
 def set_model_moe(cache: ScanCache, tag: str, is_moe: bool) -> None:
     cache.setdefault(tag, ModelScanCacheEntry())["moe"] = is_moe
+
+
+def get_cached_mmproj_mib(cache: ScanCache, tag: str) -> int | None:
+    entry = cache.get(tag)
+    if entry is None:
+        return None
+    mmproj = entry.get("mmproj")
+    if not isinstance(mmproj, str) or not mmproj:
+        return None
+    try:
+        return int(mmproj.rstrip("Mm"))
+    except ValueError:
+        return None
 
 
 def get_all_ubatch_entries(cache: ScanCache, tag: str, vision_mode: bool) -> UbatchEntries:

@@ -64,6 +64,7 @@ from llama_bench.schema_types import Capabilities, ReasoningDetails, ResultRow, 
 from llama_bench.scan_cache import (
     get_capabilities,
     get_cached_max_ctx,
+    get_cached_mmproj_mib,
     get_model_moe,
     get_reusable_scan_entry,
     get_scan_entry,
@@ -1278,9 +1279,9 @@ def benchmark_tag(
 ) -> None:
     start_time = time.monotonic()
     identity = identity_from_tag(tag, require_quant=False)
-    refresh_metadata = args.rescan_cutoff is not None
-
-    mmproj_mib = get_mmproj_size_mib(tag)
+    mmproj_mib = get_cached_mmproj_mib(cache, tag)
+    if mmproj_mib is None:
+        mmproj_mib = get_mmproj_size_mib(tag)
     mode = "vision" if args.vision else "text"
 
     if args.vision:
@@ -1295,8 +1296,8 @@ def benchmark_tag(
     if not args.vision and mmproj_mib > 0:
         log("model | meta | vision_capable=true | running=text")
 
-    caps = detect_capabilities(tag) if refresh_metadata else (get_capabilities(cache, tag) or detect_capabilities(tag))
-    model_is_moe = is_moe_model(tag) if refresh_metadata else get_model_moe(cache, tag)
+    caps = get_capabilities(cache, tag) or detect_capabilities(tag)
+    model_is_moe = get_model_moe(cache, tag)
     if model_is_moe is None:
         model_is_moe = is_moe_model(tag)
         set_model_moe(cache, tag, model_is_moe)

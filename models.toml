@@ -98,6 +98,9 @@ group = "gemma-4-e4b"
 [[models.ini]]
 mode = "text"
 ubatch = 512
+[[models.ini]]
+mode = "vision"
+ubatch = 512
 
 # Gemma 4 26B A4B
 [[models]]
@@ -177,6 +180,9 @@ group = "gemma-4-26b-a4b"
 repo = "bartowski/google_gemma-4-26B-A4B-it-GGUF"
 quant = "Q4_K_M"
 group = "gemma-4-26b-a4b"
+[[models.ini]]
+mode = "vision"
+ubatch = 1024
 
 [[models]]
 repo = "bartowski/google_gemma-4-26B-A4B-it-GGUF"
@@ -205,6 +211,9 @@ group = "gemma-4-26b-a4b"
 repo = "bartowski/google_gemma-4-26B-A4B-it-GGUF"
 quant = "Q6_K"
 group = "gemma-4-26b-a4b"
+[[models.ini]]
+mode = "vision"
+ubatch = 1024
 
 [[models]]
 repo = "bartowski/google_gemma-4-26B-A4B-it-GGUF"
@@ -422,6 +431,9 @@ group = "qwen3.5-4b"
 [[models.ini]]
 mode = "text"
 ubatch = 512
+[[models.ini]]
+mode = "vision"
+ubatch = 512
 
 [[models]]
 repo = "unsloth/Qwen3.5-4B-GGUF"
@@ -460,6 +472,9 @@ group = "qwen3.5-4b"
 [[models.ini]]
 mode = "text"
 ubatch = 512
+[[models.ini]]
+mode = "vision"
+ubatch = 512
 
 # Qwen3.5 9B
 [[models]]
@@ -473,6 +488,9 @@ quant = "UD-Q4_K_XL"
 group = "qwen3.5-9b"
 [[models.ini]]
 mode = "text"
+ubatch = 512
+[[models.ini]]
+mode = "vision"
 ubatch = 512
 
 [[models]]
@@ -552,6 +570,9 @@ group = "qwen3.5-9b"
 [[models.ini]]
 mode = "text"
 ubatch = 512
+[[models.ini]]
+mode = "vision"
+ubatch = 512
 
 # Qwen3.5 122B A10B
 [[models]]
@@ -586,6 +607,9 @@ group = "qwen3.5-122b-a10b"
 [[models.ini]]
 mode = "text"
 ubatch = 1024
+[[models.ini]]
+mode = "vision"
+ubatch = 1024
 
 [[models]]
 repo = "bartowski/Qwen_Qwen3.5-122B-A10B-GGUF"
@@ -603,6 +627,9 @@ quant = "Q4_K_M"
 group = "qwen3.5-122b-a10b"
 [[models.ini]]
 mode = "text"
+ubatch = 1024
+[[models.ini]]
+mode = "vision"
 ubatch = 1024
 
 [[models]]
@@ -630,6 +657,9 @@ group = "qwen3.6-35b-a3b"
 repo = "unsloth/Qwen3.6-35B-A3B-GGUF"
 quant = "UD-Q4_K_M"
 group = "qwen3.6-35b-a3b"
+[[models.ini]]
+mode = "vision"
+ubatch = 2048
 
 [[models]]
 repo = "unsloth/Qwen3.6-35B-A3B-GGUF"
@@ -709,6 +739,9 @@ group = "qwen3.6-35b-a3b"
 [[models.ini]]
 mode = "text"
 ubatch = 2048
+[[models.ini]]
+mode = "vision"
+ubatch = 2048
 
 [[models]]
 repo = "bartowski/Qwen_Qwen3.6-35B-A3B-GGUF"
@@ -760,6 +793,9 @@ ubatch = 2048
 repo = "AesSedai/Qwen3.6-35B-A3B-GGUF"
 quant = "Q6_K"
 group = "qwen3.6-35b-a3b"
+[[models.ini]]
+mode = "vision"
+ubatch = 2048
 
 [[models]]
 repo = "byteshape/Qwen3.6-35B-A3B-GGUF"
@@ -788,6 +824,9 @@ group = "qwen3.6-35b-a3b"
 [[models.ini]]
 mode = "text"
 ubatch = 2048
+[[models.ini]]
+mode = "vision"
+ubatch = 2048
 
 [[models]]
 repo = "mudler/Qwen3.6-35B-A3B-APEX-GGUF"
@@ -805,4 +844,7 @@ quant = "APEX-I-Balanced"
 group = "qwen3.6-35b-a3b"
 [[models.ini]]
 mode = "text"
+ubatch = 2048
+[[models.ini]]
+mode = "vision"
 ubatch = 2048
