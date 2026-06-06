@@ -1,48 +1,18 @@
 # Gemma 4 E2B
 [[models]]
-repo = "unsloth/gemma-4-E2B-it-GGUF"
-quant = "Q4_K_M"
+repo = "bartowski/google_gemma-4-E2B-it-GGUF"
+quant = "Q8_0"
 group = "gemma-4-e2b"
 
 [[models]]
-repo = "unsloth/gemma-4-E2B-it-GGUF"
+repo = "google/gemma-4-E2B-it-qat-q4_0-gguf"
+quant = "Q4_0"
+group = "gemma-4-e2b-qat"
+
+[[models]]
+repo = "unsloth/gemma-4-E2B-it-qat-GGUF"
 quant = "UD-Q4_K_XL"
-group = "gemma-4-e2b"
-
-[[models]]
-repo = "unsloth/gemma-4-E2B-it-GGUF"
-quant = "Q5_K_M"
-group = "gemma-4-e2b"
-
-[[models]]
-repo = "unsloth/gemma-4-E2B-it-GGUF"
-quant = "UD-Q5_K_XL"
-group = "gemma-4-e2b"
-
-[[models]]
-repo = "unsloth/gemma-4-E2B-it-GGUF"
-quant = "Q8_0"
-group = "gemma-4-e2b"
-
-[[models]]
-repo = "unsloth/gemma-4-E2B-it-GGUF"
-quant = "UD-Q8_K_XL"
-group = "gemma-4-e2b"
-
-[[models]]
-repo = "bartowski/google_gemma-4-E2B-it-GGUF"
-quant = "Q4_K_M"
-group = "gemma-4-e2b"
-
-[[models]]
-repo = "bartowski/google_gemma-4-E2B-it-GGUF"
-quant = "Q5_K_M"
-group = "gemma-4-e2b"
-
-[[models]]
-repo = "bartowski/google_gemma-4-E2B-it-GGUF"
-quant = "Q8_0"
-group = "gemma-4-e2b"
+group = "gemma-4-e2b-qat"
 [[models.ini]]
 mode = "text"
 ubatch = 512
@@ -50,11 +20,6 @@ ubatch = 512
 # Gemma 4 E4B
 [[models]]
 repo = "unsloth/gemma-4-E4B-it-GGUF"
-quant = "Q4_K_M"
-group = "gemma-4-e4b"
-
-[[models]]
-repo = "unsloth/gemma-4-E4B-it-GGUF"
 quant = "UD-Q4_K_XL"
 group = "gemma-4-e4b"
 [[models.ini]]
@@ -62,39 +27,71 @@ mode = "text"
 ubatch = 512
 
 [[models]]
-repo = "unsloth/gemma-4-E4B-it-GGUF"
-quant = "Q5_K_M"
-group = "gemma-4-e4b"
-
-[[models]]
-repo = "unsloth/gemma-4-E4B-it-GGUF"
-quant = "UD-Q5_K_XL"
-group = "gemma-4-e4b"
-
-[[models]]
-repo = "unsloth/gemma-4-E4B-it-GGUF"
+repo = "bartowski/google_gemma-4-E4B-it-GGUF"
 quant = "Q8_0"
 group = "gemma-4-e4b"
 
 [[models]]
-repo = "unsloth/gemma-4-E4B-it-GGUF"
-quant = "UD-Q8_K_XL"
-group = "gemma-4-e4b"
+repo = "google/gemma-4-E4B-it-qat-q4_0-gguf"
+quant = "Q4_0"
+group = "gemma-4-e4b-qat"
 
 [[models]]
-repo = "bartowski/google_gemma-4-E4B-it-GGUF"
+repo = "unsloth/gemma-4-E4B-it-qat-GGUF"
+quant = "UD-Q4_K_XL"
+group = "gemma-4-e4b-qat"
+[[models.ini]]
+mode = "text"
+ubatch = 512
+
+# Gemma 4 12B
+[[models]]
+repo = "unsloth/gemma-4-12b-it-GGUF"
+quant = "IQ4_XS"
+group = "gemma-4-12b"
+
+[[models]]
+repo = "unsloth/gemma-4-12b-it-GGUF"
 quant = "Q4_K_M"
-group = "gemma-4-e4b"
+group = "gemma-4-12b"
 
 [[models]]
-repo = "bartowski/google_gemma-4-E4B-it-GGUF"
-quant = "Q5_K_M"
-group = "gemma-4-e4b"
+repo = "unsloth/gemma-4-12b-it-GGUF"
+quant = "UD-Q4_K_XL"
+group = "gemma-4-12b"
+[[models.ini]]
+mode = "text"
+ubatch = 512
 
 [[models]]
-repo = "bartowski/google_gemma-4-E4B-it-GGUF"
-quant = "Q8_0"
-group = "gemma-4-e4b"
+repo = "bartowski/gemma-4-12B-it-GGUF"
+quant = "IQ4_XS"
+group = "gemma-4-12b"
+
+[[models]]
+repo = "bartowski/gemma-4-12B-it-GGUF"
+quant = "IQ4_NL"
+group = "gemma-4-12b"
+
+[[models]]
+repo = "bartowski/gemma-4-12B-it-GGUF"
+quant = "Q4_K_S"
+group = "gemma-4-12b"
+
+[[models]]
+repo = "bartowski/gemma-4-12B-it-GGUF"
+quant = "Q4_K_M"
+group = "gemma-4-12b"
+
+[[models]]
+repo = "google/gemma-4-12B-it-qat-q4_0-gguf"
+quant = "Q4_0"
+group = "gemma-4-12b-qat"
+
+[[models]]
+repo = "unsloth/gemma-4-12B-it-qat-GGUF"
+quant = "UD-Q4_K_XL"
+group = "gemma-4-12b-qat"
 [[models.ini]]
 mode = "text"
 ubatch = 512
@@ -157,16 +154,6 @@ quant = "UD-Q6_K_XL"
 group = "gemma-4-26b-a4b"
 
 [[models]]
-repo = "unsloth/gemma-4-26B-A4B-it-GGUF"
-quant = "Q8_0"
-group = "gemma-4-26b-a4b"
-
-[[models]]
-repo = "unsloth/gemma-4-26B-A4B-it-GGUF"
-quant = "UD-Q8_K_XL"
-group = "gemma-4-26b-a4b"
-
-[[models]]
 repo = "bartowski/google_gemma-4-26B-A4B-it-GGUF"
 quant = "IQ4_XS"
 group = "gemma-4-26b-a4b"
@@ -221,16 +208,38 @@ quant = "Q6_K_L"
 group = "gemma-4-26b-a4b"
 
 [[models]]
-repo = "bartowski/google_gemma-4-26B-A4B-it-GGUF"
-quant = "Q8_0"
+repo = "mudler/gemma-4-26B-A4B-it-APEX-GGUF"
+quant = "APEX-I-Balanced"
 group = "gemma-4-26b-a4b"
 
-# GLM 4.7 Flash
 [[models]]
-repo = "unsloth/GLM-4.7-Flash-GGUF"
-quant = "Q4_K_M"
-group = "glm-4.7-flash"
+repo = "mudler/gemma-4-26B-A4B-it-APEX-GGUF"
+quant = "APEX-I-Quality"
+group = "gemma-4-26b-a4b"
+[[models.ini]]
+mode = "text"
+ubatch = 1024
+[[models.ini]]
+mode = "vision"
+ubatch = 1024
 
+[[models]]
+repo = "google/gemma-4-26B-A4B-it-qat-q4_0-gguf"
+quant = "Q4_0"
+group = "gemma-4-26b-a4b-qat"
+
+[[models]]
+repo = "unsloth/gemma-4-26B-A4B-it-qat-GGUF"
+quant = "UD-Q4_K_XL"
+group = "gemma-4-26b-a4b-qat"
+[[models.ini]]
+mode = "text"
+ubatch = 2048
+[[models.ini]]
+mode = "vision"
+ubatch = 1024
+
+# GLM 4.7 Flash
 [[models]]
 repo = "unsloth/GLM-4.7-Flash-GGUF"
 quant = "UD-Q4_K_XL"
@@ -238,41 +247,6 @@ group = "glm-4.7-flash"
 [[models.ini]]
 mode = "text"
 ubatch = 1024
-
-[[models]]
-repo = "unsloth/GLM-4.7-Flash-GGUF"
-quant = "Q5_K_M"
-group = "glm-4.7-flash"
-
-[[models]]
-repo = "unsloth/GLM-4.7-Flash-GGUF"
-quant = "UD-Q5_K_XL"
-group = "glm-4.7-flash"
-
-[[models]]
-repo = "unsloth/GLM-4.7-Flash-GGUF"
-quant = "Q8_0"
-group = "glm-4.7-flash"
-
-[[models]]
-repo = "unsloth/GLM-4.7-Flash-GGUF"
-quant = "UD-Q8_K_XL"
-group = "glm-4.7-flash"
-
-[[models]]
-repo = "bartowski/zai-org_GLM-4.7-Flash-GGUF"
-quant = "Q4_K_M"
-group = "glm-4.7-flash"
-
-[[models]]
-repo = "bartowski/zai-org_GLM-4.7-Flash-GGUF"
-quant = "Q5_K_M"
-group = "glm-4.7-flash"
-
-[[models]]
-repo = "bartowski/zai-org_GLM-4.7-Flash-GGUF"
-quant = "Q8_0"
-group = "glm-4.7-flash"
 
 # gpt-oss 20B
 [[models]]
@@ -308,11 +282,6 @@ mode = "text"
 ubatch = 2048
 
 [[models]]
-repo = "unsloth/Qwen3-Coder-Next-GGUF"
-quant = "UD-Q4_K_XL"
-group = "qwen3-coder-next-80b"
-
-[[models]]
 repo = "bartowski/Qwen_Qwen3-Coder-Next-GGUF"
 quant = "Q4_K_M"
 group = "qwen3-coder-next-80b"
@@ -322,46 +291,6 @@ ubatch = 2048
 
 # Qwen3.5 0.8B
 [[models]]
-repo = "unsloth/Qwen3.5-0.8B-GGUF"
-quant = "Q4_K_M"
-group = "qwen3.5-0.8b"
-
-[[models]]
-repo = "unsloth/Qwen3.5-0.8B-GGUF"
-quant = "UD-Q4_K_XL"
-group = "qwen3.5-0.8b"
-
-[[models]]
-repo = "unsloth/Qwen3.5-0.8B-GGUF"
-quant = "Q5_K_M"
-group = "qwen3.5-0.8b"
-
-[[models]]
-repo = "unsloth/Qwen3.5-0.8B-GGUF"
-quant = "UD-Q5_K_XL"
-group = "qwen3.5-0.8b"
-
-[[models]]
-repo = "unsloth/Qwen3.5-0.8B-GGUF"
-quant = "Q8_0"
-group = "qwen3.5-0.8b"
-
-[[models]]
-repo = "unsloth/Qwen3.5-0.8B-GGUF"
-quant = "UD-Q8_K_XL"
-group = "qwen3.5-0.8b"
-
-[[models]]
-repo = "bartowski/Qwen_Qwen3.5-0.8B-GGUF"
-quant = "Q4_K_M"
-group = "qwen3.5-0.8b"
-
-[[models]]
-repo = "bartowski/Qwen_Qwen3.5-0.8B-GGUF"
-quant = "Q5_K_M"
-group = "qwen3.5-0.8b"
-
-[[models]]
 repo = "bartowski/Qwen_Qwen3.5-0.8B-GGUF"
 quant = "Q8_0"
 group = "qwen3.5-0.8b"
@@ -370,46 +299,6 @@ mode = "text"
 ubatch = 512
 
 # Qwen3.5 2B
-[[models]]
-repo = "unsloth/Qwen3.5-2B-GGUF"
-quant = "Q4_K_M"
-group = "qwen3.5-2b"
-
-[[models]]
-repo = "unsloth/Qwen3.5-2B-GGUF"
-quant = "UD-Q4_K_XL"
-group = "qwen3.5-2b"
-
-[[models]]
-repo = "unsloth/Qwen3.5-2B-GGUF"
-quant = "Q5_K_M"
-group = "qwen3.5-2b"
-
-[[models]]
-repo = "unsloth/Qwen3.5-2B-GGUF"
-quant = "UD-Q5_K_XL"
-group = "qwen3.5-2b"
-
-[[models]]
-repo = "unsloth/Qwen3.5-2B-GGUF"
-quant = "Q8_0"
-group = "qwen3.5-2b"
-
-[[models]]
-repo = "unsloth/Qwen3.5-2B-GGUF"
-quant = "UD-Q8_K_XL"
-group = "qwen3.5-2b"
-
-[[models]]
-repo = "bartowski/Qwen_Qwen3.5-2B-GGUF"
-quant = "Q4_K_M"
-group = "qwen3.5-2b"
-
-[[models]]
-repo = "bartowski/Qwen_Qwen3.5-2B-GGUF"
-quant = "Q5_K_M"
-group = "qwen3.5-2b"
-
 [[models]]
 repo = "bartowski/Qwen_Qwen3.5-2B-GGUF"
 quant = "Q8_0"
@@ -421,11 +310,6 @@ ubatch = 512
 # Qwen3.5 4B
 [[models]]
 repo = "unsloth/Qwen3.5-4B-GGUF"
-quant = "Q4_K_M"
-group = "qwen3.5-4b"
-
-[[models]]
-repo = "unsloth/Qwen3.5-4B-GGUF"
 quant = "UD-Q4_K_XL"
 group = "qwen3.5-4b"
 [[models.ini]]
@@ -434,37 +318,6 @@ ubatch = 512
 [[models.ini]]
 mode = "vision"
 ubatch = 512
-
-[[models]]
-repo = "unsloth/Qwen3.5-4B-GGUF"
-quant = "Q5_K_M"
-group = "qwen3.5-4b"
-
-[[models]]
-repo = "unsloth/Qwen3.5-4B-GGUF"
-quant = "UD-Q5_K_XL"
-group = "qwen3.5-4b"
-
-[[models]]
-repo = "unsloth/Qwen3.5-4B-GGUF"
-quant = "Q8_0"
-group = "qwen3.5-4b"
-
-[[models]]
-repo = "unsloth/Qwen3.5-4B-GGUF"
-quant = "UD-Q8_K_XL"
-group = "qwen3.5-4b"
-
-[[models]]
-repo = "bartowski/Qwen_Qwen3.5-4B-GGUF"
-quant = "Q4_K_M"
-group = "qwen3.5-4b"
-
-[[models]]
-repo = "bartowski/Qwen_Qwen3.5-4B-GGUF"
-quant = "Q5_K_M"
-group = "qwen3.5-4b"
-
 [[models]]
 repo = "bartowski/Qwen_Qwen3.5-4B-GGUF"
 quant = "Q8_0"
@@ -479,11 +332,6 @@ ubatch = 512
 # Qwen3.5 9B
 [[models]]
 repo = "unsloth/Qwen3.5-9B-GGUF"
-quant = "Q4_K_M"
-group = "qwen3.5-9b"
-
-[[models]]
-repo = "unsloth/Qwen3.5-9B-GGUF"
 quant = "UD-Q4_K_XL"
 group = "qwen3.5-9b"
 [[models.ini]]
@@ -492,76 +340,6 @@ ubatch = 512
 [[models.ini]]
 mode = "vision"
 ubatch = 512
-
-[[models]]
-repo = "unsloth/Qwen3.5-9B-GGUF"
-quant = "Q5_K_M"
-group = "qwen3.5-9b"
-
-[[models]]
-repo = "unsloth/Qwen3.5-9B-GGUF"
-quant = "UD-Q5_K_XL"
-group = "qwen3.5-9b"
-
-[[models]]
-repo = "unsloth/Qwen3.5-9B-GGUF"
-quant = "UD-Q6_K_XL"
-group = "qwen3.5-9b"
-
-[[models]]
-repo = "unsloth/Qwen3.5-9B-GGUF"
-quant = "Q8_0"
-group = "qwen3.5-9b"
-
-[[models]]
-repo = "unsloth/Qwen3.5-9B-GGUF"
-quant = "UD-Q8_K_XL"
-group = "qwen3.5-9b"
-
-[[models]]
-repo = "bartowski/Qwen_Qwen3.5-9B-GGUF"
-quant = "Q4_K_M"
-group = "qwen3.5-9b"
-
-[[models]]
-repo = "bartowski/Qwen_Qwen3.5-9B-GGUF"
-quant = "Q5_K_M"
-group = "qwen3.5-9b"
-
-[[models]]
-repo = "bartowski/Qwen_Qwen3.5-9B-GGUF"
-quant = "Q8_0"
-group = "qwen3.5-9b"
-
-[[models]]
-repo = "byteshape/Qwen3.5-9B-GGUF"
-quant = "IQ3_S-2.81bpw"
-group = "qwen3.5-9b"
-
-[[models]]
-repo = "byteshape/Qwen3.5-9B-GGUF"
-quant = "IQ3_S-3.00bpw"
-group = "qwen3.5-9b"
-
-[[models]]
-repo = "byteshape/Qwen3.5-9B-GGUF"
-quant = "IQ3_S-3.15bpw"
-group = "qwen3.5-9b"
-
-[[models]]
-repo = "byteshape/Qwen3.5-9B-GGUF"
-quant = "IQ4_XS-3.60bpw"
-group = "qwen3.5-9b"
-
-[[models]]
-repo = "byteshape/Qwen3.5-9B-GGUF"
-quant = "IQ4_XS-4.20bpw"
-group = "qwen3.5-9b"
-
-[[models]]
-repo = "byteshape/Qwen3.5-9B-GGUF"
-quant = "IQ4_XS-4.43bpw"
-group = "qwen3.5-9b"
 
 [[models]]
 repo = "byteshape/Qwen3.5-9B-GGUF"
@@ -576,31 +354,6 @@ ubatch = 512
 
 # Qwen3.5 122B A10B
 [[models]]
-repo = "unsloth/Qwen3.5-122B-A10B-GGUF"
-quant = "UD-IQ4_XS"
-group = "qwen3.5-122b-a10b"
-
-[[models]]
-repo = "unsloth/Qwen3.5-122B-A10B-GGUF"
-quant = "Q3_K_M"
-group = "qwen3.5-122b-a10b"
-
-[[models]]
-repo = "unsloth/Qwen3.5-122B-A10B-GGUF"
-quant = "UD-Q3_K_XL"
-group = "qwen3.5-122b-a10b"
-
-[[models]]
-repo = "unsloth/Qwen3.5-122B-A10B-GGUF"
-quant = "Q4_K_M"
-group = "qwen3.5-122b-a10b"
-
-[[models]]
-repo = "unsloth/Qwen3.5-122B-A10B-GGUF"
-quant = "Q4_K_S"
-group = "qwen3.5-122b-a10b"
-
-[[models]]
 repo = "bartowski/Qwen_Qwen3.5-122B-A10B-GGUF"
 quant = "IQ4_XS"
 group = "qwen3.5-122b-a10b"
@@ -613,16 +366,6 @@ ubatch = 1024
 
 [[models]]
 repo = "bartowski/Qwen_Qwen3.5-122B-A10B-GGUF"
-quant = "Q3_K_M"
-group = "qwen3.5-122b-a10b"
-
-[[models]]
-repo = "bartowski/Qwen_Qwen3.5-122B-A10B-GGUF"
-quant = "Q3_K_XL"
-group = "qwen3.5-122b-a10b"
-
-[[models]]
-repo = "bartowski/Qwen_Qwen3.5-122B-A10B-GGUF"
 quant = "Q4_K_M"
 group = "qwen3.5-122b-a10b"
 [[models.ini]]
@@ -631,16 +374,6 @@ ubatch = 1024
 [[models.ini]]
 mode = "vision"
 ubatch = 1024
-
-[[models]]
-repo = "bartowski/Qwen_Qwen3.5-122B-A10B-GGUF"
-quant = "Q4_K_S"
-group = "qwen3.5-122b-a10b"
-
-[[models]]
-repo = "AesSedai/Qwen3.5-122B-A10B-GGUF"
-quant = "IQ4_XS"
-group = "qwen3.5-122b-a10b"
 
 # Qwen3.6 35B A3B
 [[models]]
@@ -700,16 +433,6 @@ quant = "UD-Q6_K_XL"
 group = "qwen3.6-35b-a3b"
 
 [[models]]
-repo = "unsloth/Qwen3.6-35B-A3B-GGUF"
-quant = "Q8_0"
-group = "qwen3.6-35b-a3b"
-
-[[models]]
-repo = "unsloth/Qwen3.6-35B-A3B-GGUF"
-quant = "UD-Q8_K_XL"
-group = "qwen3.6-35b-a3b"
-
-[[models]]
 repo = "bartowski/Qwen_Qwen3.6-35B-A3B-GGUF"
 quant = "IQ4_XS"
 group = "qwen3.6-35b-a3b"
@@ -764,11 +487,6 @@ ubatch = 2048
 [[models]]
 repo = "bartowski/Qwen_Qwen3.6-35B-A3B-GGUF"
 quant = "Q6_K_L"
-group = "qwen3.6-35b-a3b"
-
-[[models]]
-repo = "bartowski/Qwen_Qwen3.6-35B-A3B-GGUF"
-quant = "Q8_0"
 group = "qwen3.6-35b-a3b"
 
 [[models]]

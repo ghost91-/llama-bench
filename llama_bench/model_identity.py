@@ -1,13 +1,20 @@
+import re
 from dataclasses import dataclass
 from typing import TypeAlias
 
 ResultKey: TypeAlias = tuple[str, str, str]
 
 
+def _normalise_gemma_name(name: str) -> str:
+    if name.startswith("gemma-4-"):
+        name = "gemma-4-" + name[8:].upper()
+    return name
+
+
 def canonical_result_model(model: str, provider: str) -> str:
     if provider == "mudler" and model.endswith("-APEX"):
-        return model[:-5]
-    return model
+        model = model[:-5]
+    return _normalise_gemma_name(model)
 
 
 def render_model_tag(repo: str, quant: str) -> str:
@@ -18,6 +25,7 @@ def display_name_from_repo(repo: str) -> str:
     name = repo.split("/")[-1]
     for prefix in (
         "google_",
+        "google.",
         "Qwen_",
         "qwen_",
         "zai-org_",
@@ -28,13 +36,15 @@ def display_name_from_repo(repo: str) -> str:
         if name.startswith(prefix):
             name = name[len(prefix) :]
             break
-    if name.endswith("-APEX-GGUF"):
+    if name.lower().endswith("-apex-gguf"):
         name = name[:-10]
-    if name.endswith("-GGUF"):
+    elif name.lower().endswith("-gguf"):
         name = name[:-5]
+    name = name.replace("-it-", "-")
     if name.endswith("-it"):
         name = name[:-3]
-    return name
+    name = re.sub(r"-qat-Q\d+_\d+$", "-QAT", name, flags=re.IGNORECASE)
+    return _normalise_gemma_name(name)
 
 
 @dataclass(frozen=True)

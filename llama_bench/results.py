@@ -31,6 +31,7 @@ PROVIDER_ORDER = {
     "ggml-org": 4,
     "Jackrong": 5,
     "AaryanK": 6,
+    "google": 7,
 }
 
 CSV_FIELDNAMES = [

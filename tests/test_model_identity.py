@@ -35,6 +35,8 @@ def test_identity_from_tag_allows_missing_quant_only_when_requested() -> None:
     ("tag", "display"),
     [
         ("google_gemma-4-26B-A4B-GGUF:Q4_K_M", "gemma-4-26B-A4B"),
+        ("bartowski/google.gemma-4-12B-it-GGUF:Q4_K_M", "gemma-4-12B"),
+        ("unsloth/gemma-4-12b-it-GGUF:Q4_K_M", "gemma-4-12B"),
         ("unsloth/Qwen_MyModel-GGUF:Q4_K_M", "MyModel"),
         ("unsloth/qwen_MyModel-GGUF:Q4_K_M", "MyModel"),
         ("zai-org_GLM-4.6-GGUF:Q4_K_M", "GLM-4.6"),
@@ -42,6 +44,8 @@ def test_identity_from_tag_allows_missing_quant_only_when_requested() -> None:
         ("nvidia_Nemotron-GGUF:Q4_K_M", "Nemotron"),
         ("NVIDIA-Nemotron-GGUF:Q4_K_M", "Nemotron"),
         ("mudler/Qwen3.6-35B-A3B-APEX-GGUF:APEX-I-Compact", "Qwen3.6-35B-A3B"),
+        ("google/gemma-4-E2B-it-qat-q4_0-gguf:Q4_0", "gemma-4-E2B-QAT"),
+        ("unsloth/gemma-4-E2B-it-qat-GGUF:UD-Q4_K_XL", "gemma-4-E2B-QAT"),
     ],
 )
 def test_display_name_normalises_known_prefixes_and_suffixes(tag: str, display: str) -> None:

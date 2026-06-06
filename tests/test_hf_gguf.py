@@ -12,6 +12,33 @@ def test_split_gguf_path_extracts_quant_and_shard_info() -> None:
     assert hf_gguf.split_gguf_path("Model") == ("Model", "", 1, 1)
 
 
+def test_split_gguf_path_handles_google_qat_underscore_quant() -> None:
+    assert hf_gguf.split_gguf_path("gemma-4-E2B_q4_0-it.gguf") == (
+        "gemma-4-E2B_q4_0-it",
+        "Q4_0",
+        1,
+        1,
+    )
+    assert hf_gguf.split_gguf_path("gemma-4-E4B_q4_0-it.gguf") == (
+        "gemma-4-E4B_q4_0-it",
+        "Q4_0",
+        1,
+        1,
+    )
+    assert hf_gguf.split_gguf_path("gemma-4-26B_q4_0-it.gguf") == (
+        "gemma-4-26B_q4_0-it",
+        "Q4_0",
+        1,
+        1,
+    )
+    assert hf_gguf.split_gguf_path("gemma-4-12b-it-qat-q4_0.gguf") == (
+        "gemma-4-12b-it-qat-q4_0",
+        "Q4_0",
+        1,
+        1,
+    )
+
+
 def test_find_matching_model_files_excludes_auxiliary_files_and_sorts_shards() -> None:
     repo_files = [
         "model-Q4_K_M-00002-of-00002.gguf",
@@ -165,6 +192,18 @@ def test_find_matching_model_files_matches_apex_files() -> None:
 
     assert hf_gguf.find_matching_model_files(repo_files, "APEX-I-Compact") == [
         "Qwen3.6-35B-A3B-APEX-I-Compact.gguf",
+    ]
+
+
+def test_find_matching_model_files_matches_google_qat_underscore_quant() -> None:
+    repo_files = [
+        "gemma-4-E2B_q4_0-it.gguf",
+        "gemma-4-E2B-it-mmproj.gguf",
+        "README.md",
+    ]
+
+    assert hf_gguf.find_matching_model_files(repo_files, "Q4_0") == [
+        "gemma-4-E2B_q4_0-it.gguf",
     ]
 
 

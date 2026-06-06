@@ -89,7 +89,9 @@ def make_metric_row(
     )
 
 
-def test_load_metric_rows_joins_kld_and_model_group(monkeypatch: MonkeyPatch, tmp_path: Path) -> None:
+def test_load_metric_rows_joins_kld_and_model_group(
+    monkeypatch: MonkeyPatch, tmp_path: Path
+) -> None:
     results_file = tmp_path / "fit-bench-results.csv"
     kld_file = tmp_path / "kld-results.csv"
     write_results(
@@ -113,7 +115,9 @@ def test_load_metric_rows_joins_kld_and_model_group(monkeypatch: MonkeyPatch, tm
     ]
 
 
-def test_load_metric_rows_skips_rows_not_in_models_toml(monkeypatch: MonkeyPatch, tmp_path: Path) -> None:
+def test_load_metric_rows_skips_rows_not_in_models_toml(
+    monkeypatch: MonkeyPatch, tmp_path: Path
+) -> None:
     results_file = tmp_path / "fit-bench-results.csv"
     kld_file = tmp_path / "kld-results.csv"
     write_results(
@@ -135,7 +139,9 @@ def test_load_metric_rows_skips_rows_not_in_models_toml(monkeypatch: MonkeyPatch
     assert [row.model for row in rows] == ["Foo"]
 
 
-def test_load_metric_rows_filters_mode_and_repeatable_ubatch(monkeypatch: MonkeyPatch, tmp_path: Path) -> None:
+def test_load_metric_rows_filters_mode_and_repeatable_ubatch(
+    monkeypatch: MonkeyPatch, tmp_path: Path
+) -> None:
     results_file = tmp_path / "fit-bench-results.csv"
     kld_file = tmp_path / "missing-kld.csv"
     write_results(
@@ -161,7 +167,9 @@ def test_load_metric_rows_filters_mode_and_repeatable_ubatch(monkeypatch: Monkey
     assert [(row.mode, row.ubatch) for row in rows] == [("vision", 1024), ("vision", 2048)]
 
 
-def test_load_metric_rows_canonicalises_existing_mudler_apex_rows(monkeypatch: MonkeyPatch, tmp_path: Path) -> None:
+def test_load_metric_rows_canonicalises_existing_mudler_apex_rows(
+    monkeypatch: MonkeyPatch, tmp_path: Path
+) -> None:
     results_file = tmp_path / "fit-bench-results.csv"
     kld_file = tmp_path / "kld-results.csv"
     write_results(
@@ -244,6 +252,7 @@ def test_filter_rows_accepts_multiple_groups_and_providers() -> None:
 
 def test_kld_colored_scatter_preserves_mode_markers(tmp_path: Path) -> None:
     import matplotlib
+
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
     from matplotlib.collections import PathCollection
@@ -253,7 +262,9 @@ def test_kld_colored_scatter_preserves_mode_markers(tmp_path: Path) -> None:
         make_metric_row(provider="bartowski", mode="vision", pp=11.0, tg=21.0, kld=0.2),
     ]
     fig, ax = plt.subplots()
-    scatter = plot_metrics._plot_kld_colored_scatter(ax, rows, lambda row: row.ctx, lambda row: row.pp_tps)
+    scatter = plot_metrics._plot_kld_colored_scatter(
+        ax, rows, lambda row: row.ctx, lambda row: row.pp_tps
+    )
     plt.close(fig)
 
     assert scatter is not None
@@ -292,9 +303,25 @@ def test_kld_tick_formatter_uses_decimal_notation() -> None:
 
 
 def test_ctx_vs_speed_plot_writes_png(tmp_path: Path) -> None:
-    out_path = plot_metrics.plot_ctx_vs_speed("Foo", [make_metric_row()], str(tmp_path / "plots" / "foo-group"))
+    out_path = plot_metrics.plot_ctx_vs_speed(
+        "Foo", [make_metric_row()], str(tmp_path / "plots" / "foo-group")
+    )
 
     assert out_path == str(tmp_path / "plots" / "foo-group" / "Foo-ctx-vs-speed.png")
+    assert Path(out_path).exists()
+
+
+def test_ctx_vs_speed_blog_plot_writes_style_suffix(tmp_path: Path) -> None:
+    old_style = plot_metrics.plot_style
+    plot_metrics.plot_style = "blog"
+    try:
+        out_path = plot_metrics.plot_ctx_vs_speed(
+            "Foo", [make_metric_row()], str(tmp_path / "plots" / "foo-group")
+        )
+    finally:
+        plot_metrics.plot_style = old_style
+
+    assert out_path == str(tmp_path / "plots" / "foo-group" / "Foo-ctx-vs-speed-blog.png")
     assert Path(out_path).exists()
 
 
