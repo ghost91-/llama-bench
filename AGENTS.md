@@ -1,4 +1,4 @@
-# llama-bench
+# llama-bench-harness
 
 Benchmark llama.cpp GGUF models to find optimal context sizes for a given GPU.
 

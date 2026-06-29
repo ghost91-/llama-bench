@@ -542,7 +542,7 @@ wheels = [
 ]
 
 [[package]]
-name = "llama-bench"
+name = "llama-bench-harness"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [

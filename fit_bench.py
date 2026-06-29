@@ -228,9 +228,9 @@ def acquire_run_lock() -> bool:
     global _run_lock
     runtime_dir = os.environ.get("XDG_RUNTIME_DIR")
     if runtime_dir:
-        lock_dir = os.path.join(runtime_dir, "llama-bench")
+        lock_dir = os.path.join(runtime_dir, "llama-bench-harness")
     else:
-        lock_dir = os.path.join("/tmp", f"llama-bench-{os.getuid()}")
+        lock_dir = os.path.join("/tmp", f"llama-bench-harness-{os.getuid()}")
     os.makedirs(lock_dir, exist_ok=True)
     lock_path = os.path.join(lock_dir, "fit_bench.lock")
     lock_file = open(lock_path, "w")

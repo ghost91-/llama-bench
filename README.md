@@ -1,4 +1,4 @@
-# llama-bench
+# llama-bench-harness
 
 Benchmark [llama.cpp](https://github.com/ggml-org/llama.cpp) GGUF models to find the optimal context size for a given GPU. Targets an RTX 4070 Laptop (8 GB VRAM) + 64 GB RAM system running Arch Linux.
 
@@ -67,7 +67,7 @@ Never prune `fit-bench-results.csv` or `kld-results.csv`; manage result rows man
 ## Setup
 
 ```
-cd llama-bench
+cd llama-bench-harness
 uv sync
 ```
 

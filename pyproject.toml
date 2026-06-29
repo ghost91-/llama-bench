@@ -1,5 +1,5 @@
 [project]
-name = "llama-bench"
+name = "llama-bench-harness"
 version = "0.1.0"
 description = "Benchmark llama.cpp GGUF models to find optimal context sizes"
 requires-python = ">=3.11"
