@@ -17,6 +17,30 @@ SAMPLER_CONFIG = {
         "min-p": "0.0",
         "reasoning": "on",
     },
+    "gemma-4-26b-a4b-qat": {
+        "temp": "1.0",
+        "top-k": "64",
+        "min-p": "0.0",
+        "reasoning": "on",
+    },
+    "gemma-4-e4b-qat": {
+        "temp": "1.0",
+        "top-k": "64",
+        "min-p": "0.0",
+        "reasoning": "on",
+    },
+    "gemma-4-12b-qat": {
+        "temp": "1.0",
+        "top-k": "64",
+        "min-p": "0.0",
+        "reasoning": "on",
+    },
+    "gemma-4-e2b-qat": {
+        "temp": "1.0",
+        "top-k": "64",
+        "min-p": "0.0",
+        "reasoning": "on",
+    },
     "qwen3.5-0.8b": {
         "temp": "1.0",
         "top-k": "20",

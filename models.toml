@@ -566,3 +566,45 @@ ubatch = 2048
 [[models.ini]]
 mode = "vision"
 ubatch = 2048
+
+# Ornith 1.0 9B
+[[models]]
+repo = "deepreinforce-ai/Ornith-1.0-9B-GGUF"
+quant = "Q4_K_M"
+group = "ornith-1.0-9b"
+
+[[models]]
+repo = "deepreinforce-ai/Ornith-1.0-9B-GGUF"
+quant = "Q5_K_M"
+group = "ornith-1.0-9b"
+
+[[models]]
+repo = "deepreinforce-ai/Ornith-1.0-9B-GGUF"
+quant = "Q6_K"
+group = "ornith-1.0-9b"
+
+[[models]]
+repo = "deepreinforce-ai/Ornith-1.0-9B-GGUF"
+quant = "Q8_0"
+group = "ornith-1.0-9b"
+
+# Ornith 1.0 35B
+[[models]]
+repo = "deepreinforce-ai/Ornith-1.0-35B-GGUF"
+quant = "Q4_K_M"
+group = "ornith-1.0-35b"
+
+[[models]]
+repo = "deepreinforce-ai/Ornith-1.0-35B-GGUF"
+quant = "Q5_K_M"
+group = "ornith-1.0-35b"
+
+[[models]]
+repo = "deepreinforce-ai/Ornith-1.0-35B-GGUF"
+quant = "Q6_K"
+group = "ornith-1.0-35b"
+
+[[models]]
+repo = "deepreinforce-ai/Ornith-1.0-35B-GGUF"
+quant = "Q8_0"
+group = "ornith-1.0-35b"
